@@ -1,0 +1,10 @@
+# PhotoCheck configuration
+
+# Default folder to scan
+default_folder = "/Volumes/Extreme SSD"
+
+# Crop factor for focal length (1.0 = full-frame, 1.5 = APS-C)
+crop_factor = 1.0
+
+# Number of worker threads
+workers = 8

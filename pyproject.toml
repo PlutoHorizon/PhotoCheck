@@ -1,0 +1,25 @@
+[project]
+name = "photocheck"
+version = "0.1.0"
+description = "Photo EXIF metadata analysis tool"
+requires-python = ">=3.10"
+dependencies = [
+    "piexif>=1.0.8",
+    "pandas>=2.0.0",
+    "pyarrow>=14.0.0",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/photocheck"]
