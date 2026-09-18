@@ -84,16 +84,19 @@ def scan_command(args: argparse.Namespace) -> int:
         # Need the DataFrame for mtime lookup; reload from parquet.
         import pandas as pd
         cached_df = pd.read_parquet(cache_path)
-        cached_paths_on_disk = {
-            Path(p) for p in cached_df["file_path"] if Path(p).exists()
-        }
-        cached_metadata = [m for m in load_cache(cache_path) if m.file_path in cached_paths_on_disk]
+
+        # Keep ALL cached entries — never drop based on disk presence.
+        # Rationale: an unmounted external drive would otherwise wipe the
+        # cache for that drive. The cache should only grow (by adding new
+        # files) or update (mtime-changed files re-extracted); deletion is
+        # left to a separate manual --prune step.
+        cached_metadata = load_cache(cache_path)
 
         stale_paths = set(get_stale_files(cached_df, file_paths))
         # Only extract new or modified files
         paths_to_extract = [f for f in file_paths if f in stale_paths]
         print(
-            f"Cache: {len(cached_metadata)} valid, "
+            f"Cache: {len(cached_metadata)} total, "
             f"{len(paths_to_extract)} to (re)extract"
         )
 
