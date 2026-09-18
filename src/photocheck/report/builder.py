@@ -22,6 +22,13 @@ _BASE_CHARTS = [
     "timeline_by_lens.html",  # the iframe target
 ]
 
+# Default report output dir; only this path is auto-wiped without --force.
+_DEFAULT_OUTPUT_DIR = Path("report")
+
+
+class UnsafeOutputDirError(Exception):
+    """Raised when build_report is asked to wipe a non-default directory."""
+
 
 def _copy_base_charts(src_dir: Path, dst_dir: Path) -> list[str]:
     """Copy base charts from src to dst. Returns list of copied filenames."""
@@ -101,15 +108,23 @@ def build_report(
     top_lenses_n: int = 5,
     charts_src: Optional[Path] = None,
     generated_at: Optional[str] = None,
+    force: bool = False,
 ) -> Path:
     """Build the full report/ folder. Returns path to index.html.
 
     Args:
         metadata: Valid PhotoMetadata list (caller filters out errors).
-        output_dir: Where to create the report folder (will be wiped if exists).
+        output_dir: Where to create the report folder.
         top_lenses_n: How many top lenses to inline on main page.
         charts_src: Directory containing the base charts. Defaults to OUTPUT_DIR.
         generated_at: Timestamp string for the report header. Defaults to now.
+        force: If True, allow wiping a non-default output directory.
+            If False (default), only the project's `./report/` is auto-wiped.
+            For any other existing path, raises UnsafeOutputDirError.
+
+    Raises:
+        UnsafeOutputDirError: If output_dir exists and is not the default
+            `./report/`, and force is not set.
     """
     from datetime import datetime as _dt
     from ..cli import OUTPUT_DIR  # lazy import: avoids circular dependency
@@ -122,8 +137,17 @@ def build_report(
     output_dir = Path(output_dir)
     charts_dst = output_dir / "charts"
 
-    # Wipe and recreate
+    # Safety: refuse to wipe a non-default directory without --force.
     if output_dir.exists():
+        try:
+            is_default = output_dir.resolve() == _DEFAULT_OUTPUT_DIR.resolve()
+        except OSError:
+            is_default = output_dir.name == _DEFAULT_OUTPUT_DIR.name
+        if not is_default and not force:
+            raise UnsafeOutputDirError(
+                f"Refusing to wipe non-default output directory: {output_dir}\n"
+                f"Pass force=True (or --force on the CLI) to override."
+            )
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     charts_dst.mkdir(parents=True, exist_ok=True)

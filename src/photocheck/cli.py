@@ -227,7 +227,18 @@ def report_command(args: argparse.Namespace) -> int:
     print(f"Generating report at: {output_dir}/")
     print(f"Top lenses to inline: {top_n}")
 
-    index_path = build_report(valid, output_dir, top_lenses_n=top_n)
+    try:
+        index_path = build_report(
+            valid, output_dir, top_lenses_n=top_n, force=args.force,
+        )
+    except (OSError, RuntimeError) as e:
+        # Build-report raises UnsafeOutputDirError to refuse risky wipes;
+        # surface as a friendly error.
+        if "UnsafeOutputDirError" in type(e).__name__:
+            print(f"Error: {e}")
+            return 1
+        raise
+
     print(f"Done. Open: {index_path}")
     return 0
 
@@ -425,6 +436,11 @@ def main(argv: List[str] | None = None) -> int:
         type=int,
         default=5,
         help="主页内嵌 Top N 镜头详情 (默认: 5)",
+    )
+    report_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="允许覆盖非默认输出目录（默认仅自动覆盖 ./report/）",
     )
     report_parser.set_defaults(func=report_command)
 
