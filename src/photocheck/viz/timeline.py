@@ -19,14 +19,7 @@ def plot_timeline_scatter(
     title: str = None,
     filename: Optional[str] = None,
 ) -> Optional[str]:
-    """Plot datetime vs specified field as scatter plot.
-
-    Args:
-        metadata_list: List of PhotoMetadata objects
-        field: Field to plot on Y-axis ('focal_length', 'iso', 'f_stop', 'shutter_speed')
-        title: Chart title (auto-generated if None)
-        filename: If provided, save chart to this path instead of displaying
-    """
+    """Plot datetime vs specified field as scatter plot (Minimal Swiss style)."""
     field_names = {
         "focal_length": "Focal Length",
         "iso": "ISO",
@@ -37,14 +30,11 @@ def plot_timeline_scatter(
     if title is None:
         title = f"{field_names.get(field, field)} Timeline"
 
-    # Extract data with datetime_original
     dates = []
     values = []
-
     for m in metadata_list:
         if m.error is not None or m.datetime_original is None:
             continue
-
         val = getattr(m, field, None)
         if val is not None and val > 0:
             dates.append(m.datetime_original)
@@ -54,22 +44,38 @@ def plot_timeline_scatter(
         print(f"No valid data for timeline plot (field={field})")
         return None
 
-    plt.figure(figsize=(14, 6))
-    plt.scatter(dates, values, alpha=0.5, s=20, c="steelblue")
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = [
+        "-apple-system", "BlinkMacSystemFont", "Segoe UI",
+        "PingFang SC", "Hiragino Sans GB", "sans-serif",
+    ]
 
-    plt.title(title, fontsize=14, fontweight="bold")
-    plt.xlabel("Capture Time", fontsize=12)
-    plt.ylabel(field_names.get(field, field), fontsize=12)
-    plt.grid(alpha=0.3)
+    fig, ax = plt.subplots(figsize=(14, 6))
+    fig.patch.set_facecolor("#fff")
+    ax.set_facecolor("#fff")
 
-    # Format x-axis dates
-    plt.gcf().autofmt_xdate()
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#1a1a1a")
+        ax.spines[side].set_linewidth(0.8)
 
+    ax.scatter(dates, values, s=14, c="#1a1a1a", alpha=0.4, edgecolors="none")
+
+    ax.set_title(title, fontsize=13, fontweight=500, color="#1a1a1a", loc="left", pad=15)
+    ax.set_xlabel("Capture Time", fontsize=10, color="#888", labelpad=10)
+    ax.set_ylabel(field_names.get(field, field), fontsize=10, color="#888", labelpad=10)
+    ax.tick_params(axis="both", colors="#1a1a1a", labelsize=10, length=0)
+    ax.yaxis.grid(True, color="#e5e5e5", linewidth=0.6, zorder=0)
+    ax.set_axisbelow(True)
+    ax.margins(y=0.1)
+
+    fig.autofmt_xdate()
     plt.tight_layout()
 
     saved_path = None
     if filename:
-        plt.savefig(filename, dpi=150, bbox_inches="tight")
+        plt.savefig(filename, dpi=150, bbox_inches="tight", facecolor="#fff")
         saved_path = filename
         print(f"Saved: {filename}")
 
@@ -83,23 +89,11 @@ def plot_hourly_heatmap(
     field: str = "focal_length",
     filename: Optional[str] = None,
 ) -> Optional[str]:
-    """Plot hourly shooting frequency heatmap.
-
-    Shows which hours of the day have most photo activity.
-
-    Args:
-        metadata_list: List of PhotoMetadata objects
-        title: Chart title
-        field: Field to aggregate ('focal_length', 'iso', or None for count)
-        filename: If provided, save chart to this path instead of displaying
-    """
-    # Extract hour and field value
+    """Plot hourly shooting frequency as a black/gray bar chart (Minimal Swiss style)."""
     hour_data = []
-
     for m in metadata_list:
         if m.error is not None or m.datetime_original is None:
             continue
-
         hour = m.datetime_original.hour
         if field is None:
             hour_data.append(hour)
@@ -112,42 +106,53 @@ def plot_hourly_heatmap(
         print("No valid data for hourly heatmap")
         return None
 
-    # Count photos per hour (0-23)
     hour_counts = Counter(hour_data)
     hours = list(range(24))
     counts = [hour_counts.get(h, 0) for h in hours]
 
-    # Create heatmap-style bar chart
-    plt.figure(figsize=(14, 6))
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = [
+        "-apple-system", "BlinkMacSystemFont", "Segoe UI",
+        "PingFang SC", "Hiragino Sans GB", "sans-serif",
+    ]
 
-    # Use a colormap to show intensity
-    colors = plt.cm.YlOrRd([c / max(counts) if max(counts) > 0 else 0 for c in counts])
+    fig, ax = plt.subplots(figsize=(14, 5))
+    fig.patch.set_facecolor("#fff")
+    ax.set_facecolor("#fff")
 
-    bars = plt.bar(hours, counts, color=colors, edgecolor="darkred", alpha=0.8)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#1a1a1a")
+        ax.spines[side].set_linewidth(0.8)
 
-    # Add count labels
+    bars = ax.bar(hours, counts, color="#1a1a1a", edgecolor="none", width=0.8)
+
     for bar, count in zip(bars, counts):
         if count > 0:
-            plt.text(
+            ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + max(counts) * 0.01,
+                bar.get_height() + max(counts) * 0.015,
                 str(count),
-                ha="center",
-                va="bottom",
-                fontsize=9,
+                ha="center", va="bottom",
+                color="#888", fontsize=9,
+                family="monospace",
             )
 
-    plt.title(title, fontsize=14, fontweight="bold")
-    plt.xlabel("Hour (0-23)", fontsize=12)
-    plt.ylabel("Photo Count", fontsize=12)
-    plt.xticks(hours)
-    plt.grid(axis="y", alpha=0.3)
+    ax.set_title(title, fontsize=13, fontweight=500, color="#1a1a1a", loc="left", pad=15)
+    ax.set_xlabel("Hour (0-23)", fontsize=10, color="#888", labelpad=10)
+    ax.set_ylabel("Photo Count", fontsize=10, color="#888", labelpad=10)
+    ax.set_xticks(hours)
+    ax.tick_params(axis="both", colors="#1a1a1a", labelsize=10, length=0)
+    ax.yaxis.grid(True, color="#e5e5e5", linewidth=0.6, zorder=0)
+    ax.set_axisbelow(True)
+    ax.margins(y=0.15)
 
     plt.tight_layout()
 
     saved_path = None
     if filename:
-        plt.savefig(filename, dpi=150, bbox_inches="tight")
+        plt.savefig(filename, dpi=150, bbox_inches="tight", facecolor="#fff")
         saved_path = filename
         print(f"Saved: {filename}")
 

@@ -246,37 +246,69 @@ def _plot_bar_chart(
     tick_labels: Optional[list] = None,
     filename: Optional[str] = None,
 ) -> Optional[str]:
-    """Helper to create a bar chart."""
-    plt.figure(figsize=(12, 6))
+    """Helper to create a bar chart in Minimal Swiss style (black/gray, no color)."""
+    # Match report CSS tokens
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = [
+        "-apple-system", "BlinkMacSystemFont", "Segoe UI",
+        "PingFang SC", "Hiragino Sans GB", "sans-serif",
+    ]
 
-    bars = plt.bar(range(len(x_values)), counts, alpha=0.7, color="steelblue", edgecolor="navy")
+    fig, ax = plt.subplots(figsize=(12, 6))
+    fig.patch.set_facecolor("#fff")
+    ax.set_facecolor("#fff")
+
+    # Hide top/right spines, light gray remaining
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#1a1a1a")
+        ax.spines[side].set_linewidth(0.8)
+
+    bars = ax.bar(
+        range(len(x_values)), counts,
+        color="#1a1a1a", edgecolor="#1a1a1a", linewidth=0, width=0.7,
+    )
 
     if tick_labels is not None:
-        plt.xticks(range(len(tick_labels)), tick_labels, rotation=45, ha="right")
+        ax.set_xticks(range(len(tick_labels)))
+        ax.set_xticklabels(tick_labels, rotation=45, ha="right", color="#1a1a1a", fontsize=10)
     else:
-        plt.xticks(range(len(x_values)), x_values, rotation=45, ha="right")
+        ax.set_xticks(range(len(x_values)))
+        ax.set_xticklabels(x_values, rotation=45, ha="right", color="#1a1a1a", fontsize=10)
 
-    # Add count labels on bars
+    # Tick params
+    ax.tick_params(axis="y", colors="#1a1a1a", labelsize=10, length=0)
+    ax.tick_params(axis="x", colors="#1a1a1a", length=0)
+
+    # Count labels above bars
     max_count = max(counts) if counts else 1
     for bar, count in zip(bars, counts):
-        plt.text(
+        ax.text(
             bar.get_x() + bar.get_width() / 2,
-            bar.get_height() + max_count * 0.01,
+            bar.get_height() + max_count * 0.015,
             str(count),
-            ha="center",
-            va="bottom",
-            fontsize=9,
+            ha="center", va="bottom",
+            color="#888", fontsize=9,
+            family="monospace",
         )
 
-    plt.title(title, fontsize=14, fontweight="bold")
-    plt.xlabel(xlabel, fontsize=12)
-    plt.ylabel(ylabel, fontsize=12)
-    plt.grid(axis="y", alpha=0.3)
+    ax.set_title(title, fontsize=13, fontweight=500, color="#1a1a1a", loc="left", pad=15)
+    ax.set_xlabel(xlabel, fontsize=10, color="#888", labelpad=10)
+    ax.set_ylabel(ylabel, fontsize=10, color="#888", labelpad=10)
+
+    # Subtle horizontal grid only
+    ax.yaxis.grid(True, color="#e5e5e5", linewidth=0.6, zorder=0)
+    ax.set_axisbelow(True)
+
+    # Strip top/right padding
+    ax.margins(y=0.15)
+
     plt.tight_layout()
 
     saved_path = None
     if filename:
-        plt.savefig(filename, dpi=150, bbox_inches="tight")
+        plt.savefig(filename, dpi=150, bbox_inches="tight", facecolor="#fff")
         saved_path = filename
         print(f"Saved: {filename}")
 

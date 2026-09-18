@@ -13,8 +13,10 @@
   --color-accent: #1a1a1a;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
   --font-num: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --nav-width: 160px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
 body {
   font-family: var(--font-sans);
   color: var(--color-text);
@@ -24,6 +26,51 @@ body {
   max-width: 1100px;
   margin: 0 auto;
 }
+
+/* ============ LEFT NAVIGATION ============ */
+.nav {
+  position: fixed;
+  top: 3rem;
+  left: 2rem;
+  width: var(--nav-width);
+  font-size: 0.75rem;
+  z-index: 10;
+}
+.nav-label {
+  font-size: 0.65rem;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-rule);
+}
+.nav-list { list-style: none; }
+.nav-list li { margin-bottom: 0.65rem; }
+.nav-list a {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  color: var(--color-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.nav-list a:hover { color: var(--color-text); }
+.nav-list .num {
+  font-family: var(--font-num);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  min-width: 1.5rem;
+}
+.nav-list .label { flex: 1; }
+.nav-list a.active { color: var(--color-text); font-weight: 500; }
+.nav-list a.active .num { color: var(--color-text); }
+
+/* Shift body content to make room for nav (only on wide screens) */
+@media (min-width: 1280px) {
+  body { padding-left: calc(2rem + var(--nav-width) + 2rem); }
+}
+
 header {
   border-bottom: 1px solid var(--color-rule);
   padding-bottom: 1.5rem;
@@ -47,6 +94,7 @@ header .meta {
 section {
   border-bottom: 1px solid var(--color-rule);
   padding: 2.5rem 0;
+  scroll-margin-top: 1rem;
 }
 section:last-of-type { border-bottom: none; }
 .section-head {
@@ -178,6 +226,10 @@ footer a {
   text-decoration: none;
   border-bottom: 1px solid var(--color-text);
 }
+
+@media (max-width: 1279px) {
+  .nav { display: none; }
+}
 @media (max-width: 720px) {
   body { padding: 1.5rem 1rem 3rem; }
   .hero-grid { grid-template-columns: repeat(2, 1fr); gap: 1.5rem 1rem; }
@@ -189,13 +241,28 @@ footer a {
 </head>
 <body>
 
+{# ============ LEFT NAVIGATION ============ #}
+<aside class="nav" aria-label="Section navigation">
+  <div class="nav-label">Sections</div>
+  <ul class="nav-list">
+    <li><a href="#overview"><span class="num">00</span><span class="label">Overview</span></a></li>
+    {% if hourly and hourly|sum > 0 %}<li><a href="#hourly"><span class="num">01</span><span class="label">Hourly</span></a></li>{% endif %}
+    <li><a href="#focal"><span class="num">02</span><span class="label">Focal length</span></a></li>
+    <li><a href="#aperture"><span class="num">03</span><span class="label">Aperture</span></a></li>
+    <li><a href="#lens-usage"><span class="num">04</span><span class="label">Lens usage</span></a></li>
+    <li><a href="#lens-timeline"><span class="num">05</span><span class="label">Lens timeline</span></a></li>
+    <li><a href="#focal-timeline"><span class="num">06</span><span class="label">Focal over time</span></a></li>
+    {% if top_lenses %}<li><a href="#top-lenses"><span class="num">07</span><span class="label">Top lenses</span></a></li>{% endif %}
+  </ul>
+</aside>
+
 <header>
   <h1>PhotoCheck Report</h1>
   <div class="meta">{{ generated_at }} · {{ valid_photos }} photos</div>
 </header>
 
 {# ============ HERO STATS — 6 cards, each rendered inline with custom sub-text ============ #}
-<section class="hero">
+<section id="overview" class="hero">
   <div class="hero-grid">
 
     {# 01 — Main lens #}
@@ -263,7 +330,7 @@ footer a {
 
 {# ============ 01 — HOURLY ============ #}
 {% if hourly and hourly|sum > 0 %}
-<section>
+<section id="hourly">
   <div class="section-head"><span class="num">01</span><h2>Hourly distribution</h2></div>
   <div class="hourly-bars">
     {% set max_h = (hourly|max) or 1 %}
@@ -278,34 +345,34 @@ footer a {
 {% endif %}
 
 {# ============ 02 — FOCAL ============ #}
-<section>
+<section id="focal">
   <div class="section-head"><span class="num">02</span><h2>Focal length</h2></div>
   <img class="chart-full" src="charts/focal_histogram.png" alt="Focal length distribution"
        onerror="this.outerHTML='&lt;div class=&quot;empty-state&quot;&gt;图表未生成&lt;/div&gt;'">
 </section>
 
 {# ============ 03 — FSTOP ============ #}
-<section>
+<section id="aperture">
   <div class="section-head"><span class="num">03</span><h2>Aperture</h2></div>
   <img class="chart-full" src="charts/fstop_histogram.png" alt="Aperture distribution"
        onerror="this.outerHTML='&lt;div class=&quot;empty-state&quot;&gt;图表未生成&lt;/div&gt;'">
 </section>
 
 {# ============ 04 — LENS ============ #}
-<section>
+<section id="lens-usage">
   <div class="section-head"><span class="num">04</span><h2>Lens usage</h2></div>
   <img class="chart-full" src="charts/lens_histogram.png" alt="Lens usage"
        onerror="this.outerHTML='&lt;div class=&quot;empty-state&quot;&gt;图表未生成&lt;/div&gt;'">
 </section>
 
 {# ============ 05 — LENS TIMELINE IFRAME ============ #}
-<section>
+<section id="lens-timeline">
   <div class="section-head"><span class="num">05</span><h2>Lens timeline</h2></div>
   <iframe src="charts/timeline_by_lens.html" loading="lazy"></iframe>
 </section>
 
 {# ============ 06 — TIMELINE FOCAL ============ #}
-<section>
+<section id="focal-timeline">
   <div class="section-head"><span class="num">06</span><h2>Focal over time</h2></div>
   <img class="chart-full" src="charts/timeline_focal_length.png" alt="Focal length over time"
        onerror="this.outerHTML='&lt;div class=&quot;empty-state&quot;&gt;图表未生成&lt;/div&gt;'">
@@ -313,7 +380,7 @@ footer a {
 
 {# ============ 07 — TOP LENSES DETAILS ============ #}
 {% if top_lenses %}
-<section>
+<section id="top-lenses">
   <div class="section-head"><span class="num">07</span><h2>Top lenses</h2></div>
   <div class="lens-grid">
     {% for lens in top_lenses %}
@@ -336,6 +403,36 @@ footer a {
   <a href="lenses.html">View all lenses →</a>
   <span>PhotoCheck v0.1.0</span>
 </footer>
+
+<script>
+// Highlight current section in nav as user scrolls
+(function() {
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('.nav-list a[href^="#"]');
+  if (!sections.length || !navLinks.length) return;
+
+  const linkMap = {};
+  navLinks.forEach(a => {
+    const id = a.getAttribute('href').slice(1);
+    linkMap[id] = a;
+  });
+
+  function update() {
+    let currentId = null;
+    const scrollY = window.scrollY + 100;
+    sections.forEach(sec => {
+      if (sec.offsetTop <= scrollY) currentId = sec.id;
+    });
+    navLinks.forEach(a => a.classList.remove('active'));
+    if (currentId && linkMap[currentId]) {
+      linkMap[currentId].classList.add('active');
+    }
+  }
+
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+})();
+</script>
 
 </body>
 </html>
