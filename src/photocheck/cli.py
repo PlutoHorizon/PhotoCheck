@@ -250,10 +250,11 @@ def interactive_menu() -> int:
         print()
         print("1. 扫描照片 (scan)")
         print("2. 可视化分析 (analyze)")
-        print("3. 退出 (quit)")
+        print("3. 生成 HTML 报告 (report)")
+        print("4. 退出 (quit)")
         print()
 
-        choice = input("请选择 (1/2/3): ").strip()
+        choice = input("请选择 (1/2/3/4): ").strip()
 
         if choice == "1":
             folder = input(f"照片文件夹 [{default_folder}]: ").strip() or default_folder
@@ -308,7 +309,20 @@ def interactive_menu() -> int:
 
             analyze_command(Args())
 
-        elif choice in ("3", "q", "quit", "exit"):
+        elif choice == "3":
+            if not has_cache:
+                print("错误: 暂无数据，请先扫描照片")
+                continue
+            top_str = input(f"内嵌 Top N 镜头 [{5}]: ").strip()
+            top_n = int(top_str) if top_str else 5
+            print()
+            class Args:
+                folder = default_folder
+                output = None
+                top_lenses = top_n
+            report_command(Args())
+
+        elif choice in ("4", "q", "quit", "exit"):
             print("再见!")
             break
 
