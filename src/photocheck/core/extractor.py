@@ -25,6 +25,13 @@ EXIF_TAGS = {
 EXIF_TAGS[306] = ("0th", "datetime_modified")  # DateTime
 
 
+# Pre-grouped by parent_key for faster lookups. Built once at import.
+# Maps parent_key -> list of (tag_id, field_name)
+_TAGS_BY_PARENT: dict[str, list[tuple[int, str]]] = {}
+for _tag_id, (_parent, _field) in EXIF_TAGS.items():
+    _TAGS_BY_PARENT.setdefault(_parent, []).append((_tag_id, _field))
+
+
 def _parse_rational(value: tuple) -> float:
     """Parse a rational number tuple (numerator, denominator)."""
     if value is None:
@@ -77,27 +84,31 @@ def extract_metadata(
         result.error = str(e)
         return result
 
-    for tag_id, (parent_key, field_name) in EXIF_TAGS.items():
-        try:
-            parent = exif_data.get(parent_key, {})
-            value = parent.get(tag_id)
-
-            if value is None:
-                continue
-
-            # Type-specific parsing
-            if field_name in ("focal_length", "f_stop", "shutter_speed"):
-                parsed = _parse_rational(value)
-                if field_name == "focal_length" and parsed is not None:
-                    parsed *= crop_factor
-            elif field_name.startswith("datetime"):
-                parsed = _parse_datetime(value)
-            else:
-                parsed = _parse_string(value) if isinstance(value, bytes) else value
-
-            setattr(result, field_name, parsed)
-
-        except Exception:
+    # Iterate by parent_key (3 keys) instead of per-tag (10 tags),
+    # so exif_data.get() is called once per parent, not once per tag.
+    for parent_key, tags in _TAGS_BY_PARENT.items():
+        parent = exif_data.get(parent_key)
+        if parent is None:
             continue
+        for tag_id, field_name in tags:
+            try:
+                value = parent.get(tag_id)
+                if value is None:
+                    continue
+
+                # Type-specific parsing
+                if field_name in ("focal_length", "f_stop", "shutter_speed"):
+                    parsed = _parse_rational(value)
+                    if field_name == "focal_length" and parsed is not None:
+                        parsed *= crop_factor
+                elif field_name.startswith("datetime"):
+                    parsed = _parse_datetime(value)
+                else:
+                    parsed = _parse_string(value) if isinstance(value, bytes) else value
+
+                setattr(result, field_name, parsed)
+
+            except Exception:
+                continue
 
     return result
