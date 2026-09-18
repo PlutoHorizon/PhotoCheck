@@ -34,6 +34,23 @@ _RIFF_MAGIC: Tuple[bytes, ...] = (b"RIFF",)  # WebP: RIFF + size + WEBP
 # All known magic prefixes (for single-pass check)
 _ALL_MAGICS: Tuple[bytes, ...] = _JPEG_MAGIC + _TIFF_MAGIC + _RAF_MAGIC + _RIFF_MAGIC
 
+# System/hidden folder names to skip during scans. These are
+# Windows/macOS artifacts that may contain files with valid image
+# extensions but garbage content (recycle bin, Spotlight cache, etc.)
+_SKIP_DIR_NAMES: Set[str] = {
+    "$RECYCLE.BIN",
+    "$Recycle.Bin",
+    "System Volume Information",
+    ".Spotlight-V100",
+    ".Trashes",
+    ".fseventsd",
+    ".TemporaryItems",
+    ".DocumentRevisions-V100",
+    ".DocumentRevisions-V100 (Being Edited)",
+    ".Temporary Items",
+    "Thumbs.db",
+}
+
 # Default extensions scanned when the user doesn't specify --extensions.
 # Includes common RAW formats plus JPEG. User can override with
 # --extensions if they want a narrower set.
@@ -117,6 +134,9 @@ def find_files_by_extensions(
     result: list[Path] = []
     for file_path in folder_path.rglob("*"):
         if not file_path.is_file():
+            continue
+        # Skip system / hidden folders
+        if any(part in _SKIP_DIR_NAMES for part in file_path.parts):
             continue
         if file_path.suffix.lower() not in normalized:
             continue

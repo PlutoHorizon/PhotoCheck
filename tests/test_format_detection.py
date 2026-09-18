@@ -100,3 +100,19 @@ class TestFindFilesByExtensions:
         result = find_files_by_extensions(tmp_path, [".jpg"])
         assert len(result) == 1
         assert result[0].name == "b.jpg"
+
+    def test_system_folders_are_skipped(self, tmp_path):
+        """System/hidden folders (recycle bin, Spotlight, etc.) are skipped
+        even if they contain files with valid image extensions.
+        """
+        # Real image in normal location
+        (tmp_path / "photos").mkdir()
+        (tmp_path / "photos" / "real.ARW").write_bytes(b"II*\x00" + b"\x00" * 100)
+        # System folders that should be skipped
+        for sysdir in ("$RECYCLE.BIN", "System Volume Information",
+                       ".Spotlight-V100", ".Trashes"):
+            (tmp_path / sysdir).mkdir(exist_ok=True)
+            (tmp_path / sysdir / "garbage.ARW").write_bytes(b"II*\x00" + b"\x00" * 100)
+        result = find_files_by_extensions(tmp_path)
+        names = sorted(p.name for p in result)
+        assert names == ["real.ARW"]
