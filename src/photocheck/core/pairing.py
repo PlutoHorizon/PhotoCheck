@@ -4,10 +4,17 @@ Supports many RAW and standard image formats. Files are validated by
 both extension AND magic bytes to avoid feeding piexif invalid input.
 """
 
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from .models import PhotoMetadata
+
+
+# Match a trailing sequence of digits in a file stem. Used as a
+# disambiguator for burst-mode photos that share all other EXIF fields.
+# Examples: "DSC05833" -> 5833, "IMG_1234" -> 1234, "vacation" -> None.
+_FILE_NUMBER_RE = re.compile(r"(\d+)$")
 
 
 # ---- Format support ----
@@ -120,12 +127,29 @@ def find_files_by_extensions(
     return sorted(result)
 
 
+def _file_number(stem: str) -> Optional[int]:
+    """Extract the trailing numeric sequence from a file stem.
+
+    Camera-assigned file numbers (e.g., DSC05833 -> 5833) are unique per
+    photo from the same camera session, even for burst-mode shots. Used
+    as a dedup disambiguator when EXIF (5-tuple) is identical between
+    two distinct photos.
+
+    Returns None if the stem has no trailing digits.
+    """
+    m = _FILE_NUMBER_RE.search(stem)
+    return int(m.group(1)) if m else None
+
+
 def _signature(meta: PhotoMetadata) -> Optional[Tuple]:
     """Build dedup signature from already-extracted metadata.
 
-    Returns tuple of (datetime_original, f_stop, shutter_speed, focal_length, iso)
-    or None if the record is unusable for dedup (extraction error or missing
-    key fields). Returns None intentionally so callers can keep the file.
+    Returns tuple of
+        (datetime_original, f_stop, shutter_speed, focal_length, iso, file_number)
+    or None if the record is unusable for dedup.
+
+    The file_number (parsed from the file stem's trailing digits) breaks
+    ties between burst-mode photos that share all other EXIF fields.
     """
     if meta.error is not None:
         return None
@@ -135,6 +159,7 @@ def _signature(meta: PhotoMetadata) -> Optional[Tuple]:
         meta.shutter_speed,
         meta.focal_length,
         meta.iso,
+        _file_number(meta.file_path.stem),
     )
 
 
@@ -143,14 +168,20 @@ def deduplicate_metadata_list(
 ) -> List[PhotoMetadata]:
     """Deduplicate a list of already-extracted PhotoMetadata.
 
-    Uses EXIF content as the unique identifier. Two photos are considered
-    duplicates when their datetime_original, f_stop, shutter_speed, focal_length,
-    and ISO all match — regardless of filename or directory. This catches
-    cross-format duplicates (e.g., the same photo saved as both .ARW and .JPG).
+    Two photos are considered duplicates when their datetime_original,
+    f_stop, shutter_speed, focal_length, ISO, and the trailing numeric
+    part of the file stem all match. This catches:
+
+    - Cross-format duplicates (ARW + JPG of the same shot have the
+      same file number and same EXIF).
+    - Cross-folder duplicates (same content saved to multiple paths).
+
+    It does NOT merge burst-mode photos that share all other EXIF but
+    have different file numbers (DSC05898, DSC05899, etc. stay distinct).
 
     Operates in O(n) by using a dict of signature -> first record. EXIF is
-    read exactly once per file (by the caller). The first record with a given
-    signature is kept; subsequent matches are dropped.
+    read exactly once per file (by the caller). The first record with a
+    given signature is kept; subsequent matches are dropped.
 
     Args:
         metadata_list: List of PhotoMetadata records (extracted by caller).
