@@ -8,36 +8,6 @@ from datetime import datetime
 from .models import PhotoMetadata
 
 
-# Camera model -> crop factor. Used as a fallback when EXIF doesn't provide
-# FocalLengthIn35mmFilm (tag 0xA405). Common Sony/Fuji/etc models.
-# Sources:
-#   - Sony ILCE-7* / ILCE-9* = full-frame (1.0)
-#   - Sony ILCE-6* / ILCE-5* / ILCE-6xxx (except 7C) = APS-C (1.5)
-#   - Fuji X-Trans = APS-C (1.5)
-#   - etc.
-_CAMERA_CROP_FACTOR: dict[str, float] = {
-    # Sony full-frame (Alpha 7/9 series, except 7xxx APS-C models)
-    "ILCE-7": 1.0, "ILCE-7M2": 1.0, "ILCE-7M3": 1.0, "ILCE-7M4": 1.0,
-    "ILCE-7RM2": 1.0, "ILCE-7RM3": 1.0, "ILCE-7RM4": 1.0, "ILCE-7RM5": 1.0,
-    "ILCE-7C": 1.0, "ILCE-7CM2": 1.0,
-    "ILCE-9": 1.0, "ILCE-9M2": 1.0,
-    "ILCE-1": 1.0,
-    # Sony APS-C (Alpha 6000 series, 5000 series, 7000 series)
-    "ILCE-6000": 1.5, "ILCE-6100": 1.5, "ILCE-6300": 1.5, "ILCE-6400": 1.5,
-    "ILCE-6500": 1.5, "ILCE-6600": 1.5, "ILCE-6700": 1.5,
-    "ILCE-5100": 1.5, "ILCE-5000": 1.5,
-    "ILCE-7M": 1.5, "ILCE-7RM": 1.5,    # original NEX-7
-    "NEX-5": 1.5, "NEX-6": 1.5, "NEX-7": 1.5,
-    # Fuji X-Trans (APS-C)
-    "X-T1": 1.5, "X-T2": 1.5, "X-T3": 1.5, "X-T4": 1.5, "X-T5": 1.5,
-    "X-H1": 1.5, "X-H2": 1.5, "X-H2S": 1.5,
-    "X-Pro1": 1.5, "X-Pro2": 1.5, "X-Pro3": 1.5,
-    "X-E1": 1.5, "X-E2": 1.5, "X-E3": 1.5, "X-E4": 1.5,
-    # Fuji medium format (GFX series, 0.79x)
-    "GFX-50S": 0.79, "GFX-50R": 0.79, "GFX-100": 0.79, "GFX-100S": 0.79, "GFX-100II": 0.79,
-}
-
-
 # EXIF tag mappings: tag_id -> (parent_key, field_name)
 EXIF_TAGS = {
     37386: ("Exif", "focal_length"),         # FocalLength
@@ -96,29 +66,26 @@ def _parse_string(value: bytes) -> Optional[str]:
 
 def extract_metadata(
     image_path: Path,
-    crop_factor: float | None = None,
+    crop_factor: float = 1.0,
 ) -> PhotoMetadata:
     """Extract EXIF metadata from a single image.
 
-    Focal-length resolution priority:
-    1. If EXIF FocalLengthIn35mmFilm (0xA405) is present, use it directly
-       (manufacturer-reported, most accurate).
-    2. Else if camera_model is in the known-camera database, use that
-       camera's crop factor.
-    3. Else use the crop_factor argument (default 1.0).
+    Focal-length resolution:
+    - If EXIF FocalLengthIn35mmFilm (0xA405) is present, use it directly
+      (manufacturer-reported 35mm-equivalent, most accurate).
+    - Otherwise use raw FocalLength as-is.
+
+    The crop_factor argument is preserved for API compatibility but
+    is no longer applied. Use FocalLengthIn35mmFilm in the EXIF instead
+    of guessing sensor format.
 
     Args:
         image_path: Path to the image file.
-        crop_factor: User-provided crop factor override. If set to a value
-            other than 1.0, it overrides the EXIF 35mm tag and camera DB.
-            If None or 1.0, auto-detection kicks in: 35mm tag > camera DB > raw.
+        crop_factor: Deprecated, ignored. Kept for API compat only.
 
     Returns:
         PhotoMetadata object with extracted values.
     """
-    if crop_factor is None:
-        crop_factor = 1.0
-
     result = PhotoMetadata(file_path=image_path)
 
     try:
@@ -155,17 +122,9 @@ def extract_metadata(
             except Exception:
                 continue
 
-    # Resolve final focal_length.
-    # Priority: user-explicit > EXIF 35mm tag > camera DB > raw
-    # (user "explicit" means crop_factor != 1.0, i.e. they specifically
-    # said "this is APS-C" or similar)
-    if crop_factor != 1.0 and raw_focal is not None:
-        result.focal_length = raw_focal * crop_factor
-    elif result.focal_length_35mm is not None:
+    # Use 35mm tag if present, else raw. No DB or crop_factor math.
+    if result.focal_length_35mm is not None:
         result.focal_length = result.focal_length_35mm
-    elif result.camera_model in _CAMERA_CROP_FACTOR and raw_focal is not None:
-        cf = _CAMERA_CROP_FACTOR[result.camera_model]
-        result.focal_length = raw_focal * cf
     else:
         result.focal_length = raw_focal
 

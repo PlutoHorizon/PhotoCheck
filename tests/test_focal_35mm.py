@@ -1,100 +1,46 @@
-"""Tests for auto-detection of 35mm-equivalent focal length from EXIF.
+"""Tests for the simplified focal-length extraction logic.
 
-The extract_metadata function uses this priority to set the final focal_length:
-1. User-explicit crop_factor (when not 1.0)
-2. EXIF FocalLengthIn35mmFilm (0xA405), if present
-3. Built-in camera database (_CAMERA_CROP_FACTOR)
-4. Raw FocalLength (no conversion)
+extract_metadata now uses this simple rule:
+- If EXIF FocalLengthIn35mmFilm (0xA405) is present, use it.
+- Otherwise use raw FocalLength as-is.
+
+The crop_factor argument is preserved for API compat but ignored.
 """
 
-import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from photocheck.core.cache import load_cache, save_cache
-from photocheck.core.extractor import (
-    _CAMERA_CROP_FACTOR,
-    extract_metadata,
-)
+from photocheck.core.extractor import extract_metadata
 from photocheck.core.models import PhotoMetadata
-from photocheck.cli import get_cache_path
 
 
-class TestFocalLengthPriority:
-    """Verify the precedence: user-explicit > 35mm tag > camera DB > raw."""
-
-    def test_user_explicit_apsc_overrides_db(self, tmp_path):
-        """If user passes crop_factor=1.5, it overrides the camera DB."""
-        # Mock a fake EXIF that returns a Sony A7C II (FF body) with raw 600mm
-        fake_exif = {
-            "Exif": {
-                37386: (600, 1),       # FocalLength = 600/1 = 600
-            },
-            "0th": {
-                271: b"SONY",
-                272: b"ILCE-7CM2",    # Full-frame, but user overrides
-            },
-        }
-        with patch("photocheck.core.extractor.piexif.load", return_value=fake_exif):
-            m = extract_metadata(tmp_path / "fake.ARW", crop_factor=1.5)
-        # User forced APS-C, so 600mm raw becomes 900mm
-        assert m.focal_length == 900.0
-        assert m.camera_model == "ILCE-7CM2"
-
-    def test_camera_db_used_when_no_user_override(self, tmp_path):
-        """With crop_factor=1.0 (or None) and no 35mm tag, camera DB is used."""
-        fake_exif = {
-            "Exif": {
-                37386: (200, 1),       # raw 200mm
-            },
-            "0th": {
-                271: b"SONY",
-                272: b"ILCE-7CM2",    # FF body, DB entry 1.0
-            },
-        }
-        with patch("photocheck.core.extractor.piexif.load", return_value=fake_exif):
-            m = extract_metadata(tmp_path / "fake.ARW")  # no crop_factor
-        # FF body → no multiplication → 200mm
-        assert m.focal_length == 200.0
-
-    def test_camera_db_apsc_when_no_user_override(self, tmp_path):
-        """With an APS-C body in the DB, raw focal is multiplied by 1.5."""
-        fake_exif = {
-            "Exif": {
-                37386: (200, 1),       # raw 200mm
-            },
-            "0th": {
-                271: b"SONY",
-                272: b"ILCE-6700",    # APS-C, DB entry 1.5
-            },
-        }
-        with patch("photocheck.core.extractor.piexif.load", return_value=fake_exif):
-            m = extract_metadata(tmp_path / "fake.ARW")
-        # APS-C body → 200 * 1.5 = 300
-        assert m.focal_length == 300.0
-
-    def test_35mm_tag_overrides_db(self, tmp_path):
-        """If EXIF 35mm tag is present, it wins over camera DB."""
+class TestFocalLengthSimpleRule:
+    def test_35mm_tag_used_when_present(self, tmp_path):
         fake_exif = {
             "Exif": {
                 37386: (200, 1),         # raw 200mm
                 41993: (300, 1),         # 35mm equivalent = 300
             },
-            "0th": {
-                271: b"SONY",
-                272: b"ILCE-7CM2",
-            },
+            "0th": {271: b"SONY", 272: b"ILCE-7CM2"},
         }
         with patch("photocheck.core.extractor.piexif.load", return_value=fake_exif):
             m = extract_metadata(tmp_path / "fake.ARW")
-        # 35mm tag wins: 300, not 200
         assert m.focal_length == 300.0
         assert m.focal_length_35mm == 300.0
 
-    def test_unknown_camera_uses_raw(self, tmp_path):
-        """A camera not in the DB and no 35mm tag uses raw focal."""
+    def test_raw_used_when_no_35mm_tag(self, tmp_path):
+        fake_exif = {
+            "Exif": {37386: (600, 1)},     # raw 600mm, no 35mm tag
+            "0th": {271: b"SONY", 272: b"ILCE-7CM2"},
+        }
+        with patch("photocheck.core.extractor.piexif.load", return_value=fake_exif):
+            m = extract_metadata(tmp_path / "fake.ARW")
+        assert m.focal_length == 600.0
+        assert m.focal_length_35mm is None
+
+    def test_unknown_camera_with_no_35mm_uses_raw(self, tmp_path):
         fake_exif = {
             "Exif": {37386: (35, 1)},
             "0th": {271: b"Foo", 272: b"UnknownModel"},
@@ -103,12 +49,20 @@ class TestFocalLengthPriority:
             m = extract_metadata(tmp_path / "fake.ARW")
         assert m.focal_length == 35.0
 
-    def test_camera_db_contains_user_cameras(self):
-        """The user's known cameras (A7C II and A7R V) are in the DB."""
-        assert _CAMERA_CROP_FACTOR.get("ILCE-7CM2") == 1.0
-        assert _CAMERA_CROP_FACTOR.get("ILCE-7RM5") == 1.0
+    def test_crop_factor_arg_is_ignored(self, tmp_path):
+        """The crop_factor argument is kept for API compat but no longer
+        applied. We use 35mm if present, raw otherwise.
+        """
+        fake_exif = {
+            "Exif": {37386: (200, 1)},     # raw 200mm
+            "0th": {271: b"SONY", 272: b"ILCE-7CM2"},
+        }
+        with patch("photocheck.core.extractor.piexif.load", return_value=fake_exif):
+            # Pass crop_factor=1.5 — should be ignored
+            m = extract_metadata(tmp_path / "fake.ARW", crop_factor=1.5)
+        assert m.focal_length == 200.0  # not 300
 
-    def test_existing_cache_loads_compatible(self):
+    def test_existing_cache_compat(self):
         """Old cache entries without focal_length_35mm still work."""
         m = PhotoMetadata(
             file_path=Path("/test.ARW"),
@@ -116,26 +70,3 @@ class TestFocalLengthPriority:
         )
         assert m.focal_length_35mm is None
         assert m.focal_length == 200.0
-
-    def test_35mm_overrides_db_even_for_ff_body_in_crop_mode(self, tmp_path):
-        """A7C II (FF body) shooting in crop mode: DB would say 1.0,
-        but 35mm tag tells the truth. The tag must win.
-        """
-        fake_exif = {
-            "Exif": {
-                37386: (200, 1),       # raw 200mm lens
-                41993: (300, 1),       # 35mm equivalent = 300 → 1.5x crop
-            },
-            "0th": {
-                271: b"SONY",
-                272: b"ILCE-7CM2",    # FF body in DB
-            },
-        }
-        with patch("photocheck.core.extractor.piexif.load", return_value=fake_exif):
-            m = extract_metadata(tmp_path / "fake.ARW")
-        # 35mm tag wins over DB — uses the actual sensor mode used
-        assert m.focal_length == 300.0
-        assert m.focal_length_35mm == 300.0
-        # Implied crop factor (computed by caller if needed)
-        assert m.focal_length_35mm / 200.0 == 1.5
-
