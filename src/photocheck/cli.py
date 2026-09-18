@@ -76,6 +76,24 @@ def scan_command(args: argparse.Namespace) -> int:
     if not file_paths:
         return 0
 
+    # Dry-run mode: print breakdown and exit without writing cache
+    if getattr(args, "dry_run", False):
+        from collections import Counter
+        by_ext = Counter(f.suffix.upper() for f in file_paths)
+        print()
+        print("DRY-RUN: no cache changes will be made")
+        print(f"  Total files: {len(file_paths)}")
+        print("  By extension:")
+        for ext, n in sorted(by_ext.items(), key=lambda x: -x[1]):
+            print(f"    {ext}: {n}")
+        if cache_path.exists():
+            cached = load_cache(cache_path)
+            cached_paths = {m.file_path for m in cached}
+            new_files = [f for f in file_paths if f not in cached_paths]
+            print(f"  Already in cache: {len(file_paths) - len(new_files)}")
+            print(f"  Would be processed (new or modified): {len(new_files)}")
+        return 0
+
     # Load existing unified cache if requested.
     # Use mtime to detect files that were modified after caching — those need
     # to be re-extracted. Files in the cache but no longer on disk are dropped.
@@ -426,6 +444,11 @@ def main(argv: List[str] | None = None) -> int:
         type=int,
         default=default_workers,
         help=f"Number of worker threads (default: {default_workers})",
+    )
+    scan_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="仅扫描并打印统计，不写 cache",
     )
     scan_parser.set_defaults(func=scan_command)
 
