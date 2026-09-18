@@ -85,17 +85,30 @@ def scan_command(args: argparse.Namespace) -> int:
 
     print(f"Processing {len(file_paths)} unique photos with {args.workers} workers...")
 
-    # Load existing unified cache if requested
+    # Load existing unified cache if requested.
+    # Use mtime to detect files that were modified after caching — those need
+    # to be re-extracted. Files in the cache but no longer on disk are dropped.
     cached_metadata: List[PhotoMetadata] = []
     if args.use_cache and cache_path.exists():
-        cached_df = load_cache(cache_path)
-        # Filter cached entries that still exist on disk
-        cached_metadata = [m for m in cached_df if m.file_path.exists()]
-        existing_paths = {m.file_path for m in cached_metadata}
-        file_paths = [f for f in file_paths if f not in existing_paths]
-        print(f"Loaded {len(cached_metadata)} entries from cache, {len(file_paths)} new files to process")
+        # Need the DataFrame for mtime lookup; reload from parquet.
+        import pandas as pd
+        cached_df = pd.read_parquet(cache_path)
+        cached_paths_on_disk = {
+            Path(p) for p in cached_df["file_path"] if Path(p).exists()
+        }
+        cached_metadata = [m for m in load_cache(cache_path) if m.file_path in cached_paths_on_disk]
 
-    # Process new files
+        stale_paths = set(get_stale_files(cached_df, file_paths))
+        # Drop stale entries from cache; they'll be re-extracted below
+        cached_metadata = [m for m in cached_metadata if m.file_path not in stale_paths]
+        # Process only the stale + new files
+        file_paths = [f for f in file_paths if f in stale_paths]
+        print(
+            f"Cache: {len(cached_metadata)} valid, "
+            f"{len(file_paths)} to (re)extract"
+        )
+
+    # Process files needing extraction
     if file_paths:
         new_metadata = _process_files(file_paths, crop_factor, args.workers)
         metadata_list = cached_metadata + new_metadata
