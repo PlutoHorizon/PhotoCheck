@@ -11,7 +11,7 @@ import concurrent.futures
 from tqdm import tqdm
 
 from .core.extractor import extract_metadata
-from .core.pairing import find_files_by_extensions, deduplicate_metadata_list
+from .core.pairing import find_files_by_extensions, deduplicate_metadata_list, DEFAULT_EXTENSIONS as _PAIRING_DEFAULT_EXTENSIONS
 from .core.cache import save_cache, load_cache, get_stale_files
 from .core.models import PhotoMetadata
 from .viz.histograms import plot_focal_histogram, plot_fstop_histogram, plot_lens_histogram, plot_lens_detail
@@ -19,8 +19,9 @@ from .viz.timeline import plot_timeline_scatter, plot_hourly_heatmap, plot_timel
 from .report.builder import build_report
 
 
-# Only ARW files by default
-DEFAULT_EXTENSIONS = [".arw", ".ARW"]
+# Default extensions are defined in core/pairing.py (DEFAULT_EXTENSIONS).
+# Kept here as a back-compat alias.
+DEFAULT_EXTENSIONS = list(_PAIRING_DEFAULT_EXTENSIONS)
 CACHE_FILENAME = "photocheck_cache.parquet"
 CONFIG_FILE = "photocheck.toml"
 
