@@ -46,9 +46,11 @@ class TestSaveCacheAutoBackup:
         save_cache([_meta("a"), _meta("b"), _meta("c")], cache)
         save_cache([_meta("a")], cache)
 
-        # Only 2 files in tmp_path (cache + backup)
-        files = sorted(p.name for p in tmp_path.iterdir())
-        assert files == ["cache.parquet", "cache_backup.parquet"]
+        # Data files: cache + backup. (A .lock file may also be present.)
+        data_files = sorted(
+            p.name for p in tmp_path.iterdir() if not p.name.endswith(".lock")
+        )
+        assert data_files == ["cache.parquet", "cache_backup.parquet"]
 
         # Cache has 1 entry, backup has 3 (the previous state)
         assert len(load_cache(cache)) == 1

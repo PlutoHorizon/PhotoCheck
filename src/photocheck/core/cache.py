@@ -1,15 +1,51 @@
 """Cache management for PhotoCheck using Parquet."""
 
+import contextlib
 import os
 import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
 import pandas as pd
 
 from .models import PhotoMetadata
+
+
+# Cross-process file locking via fcntl.flock (POSIX). On Windows the lock
+# is a no-op — concurrent writes are unsafe there but unlikely in practice.
+try:
+    import fcntl
+    _HAS_FLOCK = True
+except ImportError:
+    _HAS_FLOCK = False
+
+
+@contextlib.contextmanager
+def _cache_lock(cache_path: Path, exclusive: bool) -> Iterator[None]:
+    """Acquire an advisory lock on the cache file for safe concurrent I/O.
+
+    Uses fcntl.flock (OS-level, cross-process). Multiple readers can hold
+    a shared lock concurrently; a writer takes an exclusive lock that
+    blocks until all readers and writers release.
+
+    On non-POSIX systems (Windows), this is a no-op — single-process safety
+    only.
+    """
+    if not _HAS_FLOCK:
+        yield
+        return
+
+    lock_path = Path(str(cache_path) + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+    with open(lock_path, "w") as f:
+        fcntl.flock(f, mode)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 def metadata_to_dataframe(metadata_list: List[PhotoMetadata]) -> pd.DataFrame:
@@ -82,29 +118,35 @@ def save_cache(metadata_list: List[PhotoMetadata], cache_path: Path) -> None:
     Before writing, the previous cache (if any) is copied to a single
     fixed-name backup file in the same directory. The backup is overwritten
     on each save, so only one backup is kept at a time.
+
+    Uses an exclusive OS-level lock to prevent concurrent writes from
+    multiple processes. The backup copy + new write happen under one
+    critical section, so the chain of backups always reflects valid states.
     """
     cache_path = Path(cache_path)
     backup_path = cache_path.with_name(cache_path.stem + "_backup.parquet")
 
-    # If a current cache exists, copy it to the backup slot first.
-    # The copy is done with shutil.copy2 to preserve mtime; we use a
-    # try/except so a partial/failed prior write doesn't block the new save.
-    if cache_path.exists():
-        try:
-            shutil.copy2(cache_path, backup_path)
-        except OSError as e:
-            print(f"Warning: failed to back up cache: {e}", file=sys.stderr)
+    with _cache_lock(cache_path, exclusive=True):
+        if cache_path.exists():
+            try:
+                shutil.copy2(cache_path, backup_path)
+            except OSError as e:
+                print(f"Warning: failed to back up cache: {e}", file=sys.stderr)
 
-    df = metadata_to_dataframe(metadata_list)
-    df.to_parquet(cache_path, index=False)
+        df = metadata_to_dataframe(metadata_list)
+        df.to_parquet(cache_path, index=False)
 
 
 def load_cache(cache_path: Path) -> List[PhotoMetadata]:
-    """Load metadata list from a Parquet cache file."""
+    """Load metadata list from a Parquet cache file.
+
+    Uses a shared OS-level lock to coordinate with concurrent writers.
+    """
     if not cache_path.exists():
         return []
 
-    df = pd.read_parquet(cache_path)
+    with _cache_lock(cache_path, exclusive=False):
+        df = pd.read_parquet(cache_path)
     return dataframe_to_metadata(df)
 
 

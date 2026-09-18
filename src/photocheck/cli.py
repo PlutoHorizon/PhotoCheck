@@ -173,8 +173,21 @@ def analyze_command(args: argparse.Namespace) -> int:
 
     valid_metadata = [m for m in metadata_list if m.error is None]
 
-    # Create output directory
+    # Create output directory. Refuse to write into a non-default directory
+    # that already contains files, unless --force is set. (analyze writes
+    # files with fixed names; without this check, --output /foo would
+    # overwrite unrelated PNG/HTML files in /foo.)
     output_dir = Path(args.output) if args.output else OUTPUT_DIR
+    output_dir = output_dir.resolve()
+    default_resolved = OUTPUT_DIR.resolve()
+    if output_dir != default_resolved and output_dir.exists():
+        existing = list(output_dir.iterdir())
+        if existing and not args.force:
+            print(
+                f"Error: {output_dir} already contains {len(existing)} file(s). "
+                f"Pass --force to overwrite."
+            )
+            return 1
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Output directory: {output_dir}")
 
@@ -433,6 +446,11 @@ def main(argv: List[str] | None = None) -> int:
         "--output", "-o",
         default=None,
         help="Output directory for saved charts (default: ~/.photocheck/output/)",
+    )
+    analyze_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="允许覆盖非默认输出目录中的现有文件",
     )
     analyze_parser.set_defaults(func=analyze_command)
 

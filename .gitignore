@@ -39,6 +39,9 @@ output/
 # Superpowers brainstorming
 .superpowers/
 
+# Cache lock files (created next to photocheck_cache.parquet for concurrent write safety)
+*.lock
+
 # Junk/old code
 useless/
 
