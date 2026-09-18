@@ -88,19 +88,30 @@ def scan_command(args: argparse.Namespace) -> int:
             print(f"    {ext}: {n}")
 
         # Load existing cache (in-memory, no write)
+        # Keep ALL cached entries — never drop based on disk presence,
+        # since an unmounted drive shouldn't wipe the cache for it.
+        # We do NOT use mtime for change detection: camera RAW EXIF
+        # is set at capture and doesn't change later, so mtime-based
+        # re-extraction just wastes I/O.
         cached_metadata: List[PhotoMetadata] = []
         if cache_path.exists():
             import pandas as _pd
             cached_df = _pd.read_parquet(cache_path)
-            cached_paths_on_disk = {Path(p) for p in cached_df["file_path"] if Path(p).exists()}
-            cached_metadata = [m for m in load_cache(cache_path) if m.file_path in cached_paths_on_disk]
-
-            stale_paths = set(get_stale_files(cached_df, file_paths))
-            paths_to_extract = [f for f in file_paths if f in stale_paths]
+            cached_metadata = load_cache(cache_path)
+            cached_paths_set = set(m.file_path for m in cached_metadata)
+            # Only extract files NOT in cache (no mtime check)
+            paths_to_extract = [f for f in file_paths if f not in cached_paths_set]
         else:
             paths_to_extract = list(file_paths)
 
-        print(f"  Already in cache (mtime-valid): {len(cached_metadata)}")
+        # Count records that are still on disk (just for reporting)
+        cached_paths_on_disk = set()
+        for m in cached_metadata:
+            if m.file_path.exists():
+                cached_paths_on_disk.add(m.file_path)
+
+        print(f"  Already in cache (total): {len(cached_metadata)}")
+        print(f"  Cache entries with file on disk: {len(cached_paths_on_disk)}")
         print(f"  Would be EXIF-extracted: {len(paths_to_extract)}")
 
         # Run extraction on the would-be-processed set
@@ -138,14 +149,16 @@ def scan_command(args: argparse.Namespace) -> int:
 
         # Keep ALL cached entries — never drop based on disk presence.
         # Rationale: an unmounted external drive would otherwise wipe the
-        # cache for that drive. The cache should only grow (by adding new
-        # files) or update (mtime-changed files re-extracted); deletion is
-        # left to a separate manual --prune step.
+        # cache for that drive. The cache grows by adding new files;
+        # files already in cache are trusted as-is (EXIF for camera RAW
+        # files doesn't change after capture). mtime is intentionally
+        # NOT used — it would trigger false re-extractions for any
+        # unrelated file modification (e.g., a re-export touching the
+        # mtime without changing EXIF).
         cached_metadata = load_cache(cache_path)
-
-        stale_paths = set(get_stale_files(cached_df, file_paths))
-        # Only extract new or modified files
-        paths_to_extract = [f for f in file_paths if f in stale_paths]
+        cached_paths_set = set(m.file_path for m in cached_metadata)
+        # Only extract files that are NOT in the cache yet
+        paths_to_extract = [f for f in file_paths if f not in cached_paths_set]
         print(
             f"Cache: {len(cached_metadata)} total, "
             f"{len(paths_to_extract)} to (re)extract"
