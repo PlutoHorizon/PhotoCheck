@@ -76,22 +76,54 @@ def scan_command(args: argparse.Namespace) -> int:
     if not file_paths:
         return 0
 
-    # Dry-run mode: print breakdown and exit without writing cache
+    # Dry-run mode: full simulation of scan+dedup, but no cache write.
     if getattr(args, "dry_run", False):
         from collections import Counter
         by_ext = Counter(f.suffix.upper() for f in file_paths)
         print()
-        print("DRY-RUN: no cache changes will be made")
-        print(f"  Total files: {len(file_paths)}")
+        print("DRY-RUN: extracting EXIF and dedup-simulating (no cache changes)")
+        print(f"  Total files found: {len(file_paths)}")
         print("  By extension:")
         for ext, n in sorted(by_ext.items(), key=lambda x: -x[1]):
             print(f"    {ext}: {n}")
+
+        # Load existing cache (in-memory, no write)
+        cached_metadata: List[PhotoMetadata] = []
         if cache_path.exists():
-            cached = load_cache(cache_path)
-            cached_paths = {m.file_path for m in cached}
-            new_files = [f for f in file_paths if f not in cached_paths]
-            print(f"  Already in cache: {len(file_paths) - len(new_files)}")
-            print(f"  Would be processed (new or modified): {len(new_files)}")
+            import pandas as _pd
+            cached_df = _pd.read_parquet(cache_path)
+            cached_paths_on_disk = {Path(p) for p in cached_df["file_path"] if Path(p).exists()}
+            cached_metadata = [m for m in load_cache(cache_path) if m.file_path in cached_paths_on_disk]
+
+            stale_paths = set(get_stale_files(cached_df, file_paths))
+            paths_to_extract = [f for f in file_paths if f in stale_paths]
+        else:
+            paths_to_extract = list(file_paths)
+
+        print(f"  Already in cache (mtime-valid): {len(cached_metadata)}")
+        print(f"  Would be EXIF-extracted: {len(paths_to_extract)}")
+
+        # Run extraction on the would-be-processed set
+        if paths_to_extract:
+            new_metadata = _process_files(paths_to_extract, crop_factor, args.workers)
+        else:
+            new_metadata = []
+
+        # Dedup simulation
+        combined = cached_metadata + new_metadata
+        before = len(combined)
+        metadata_list = deduplicate_metadata_list(combined)
+        removed = before - len(metadata_list)
+        if removed > 0:
+            print(f"  Dedup would remove: {removed} duplicates")
+        else:
+            print("  Dedup would remove: 0")
+
+        # Report final state
+        print()
+        print(f"  Current cache:  {len(cached_metadata)} records")
+        print(f"  After scan:     {len(metadata_list)} records")
+        print(f"  Net change:     {'+' if len(metadata_list) > len(cached_metadata) else ''}{len(metadata_list) - len(cached_metadata)}")
         return 0
 
     # Load existing unified cache if requested.
