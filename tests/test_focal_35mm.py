@@ -117,3 +117,25 @@ class TestFocalLengthPriority:
         assert m.focal_length_35mm is None
         assert m.focal_length == 200.0
 
+    def test_35mm_overrides_db_even_for_ff_body_in_crop_mode(self, tmp_path):
+        """A7C II (FF body) shooting in crop mode: DB would say 1.0,
+        but 35mm tag tells the truth. The tag must win.
+        """
+        fake_exif = {
+            "Exif": {
+                37386: (200, 1),       # raw 200mm lens
+                41993: (300, 1),       # 35mm equivalent = 300 → 1.5x crop
+            },
+            "0th": {
+                271: b"SONY",
+                272: b"ILCE-7CM2",    # FF body in DB
+            },
+        }
+        with patch("photocheck.core.extractor.piexif.load", return_value=fake_exif):
+            m = extract_metadata(tmp_path / "fake.ARW")
+        # 35mm tag wins over DB — uses the actual sensor mode used
+        assert m.focal_length == 300.0
+        assert m.focal_length_35mm == 300.0
+        # Implied crop factor (computed by caller if needed)
+        assert m.focal_length_35mm / 200.0 == 1.5
+
