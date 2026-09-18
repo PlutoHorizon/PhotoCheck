@@ -138,6 +138,10 @@ def find_files_by_extensions(
         # Skip system / hidden folders
         if any(part in _SKIP_DIR_NAMES for part in file_path.parts):
             continue
+        # Skip macOS AppleDouble files (._ prefix) — they're resource fork
+        # metadata, not real image data, and confuse EXIF readers.
+        if file_path.name.startswith("._"):
+            continue
         if file_path.suffix.lower() not in normalized:
             continue
         if not _is_supported_image(file_path):

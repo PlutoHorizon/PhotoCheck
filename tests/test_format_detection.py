@@ -116,3 +116,15 @@ class TestFindFilesByExtensions:
         result = find_files_by_extensions(tmp_path)
         names = sorted(p.name for p in result)
         assert names == ["real.ARW"]
+
+    def test_macos_apple_double_files_are_skipped(self, tmp_path):
+        """macOS creates ._AppleDouble files (e.g., ._DSC0001.ARW) that
+        contain resource fork metadata, not actual image data. They have
+        an image-like extension but are not parseable by EXIF tools.
+        """
+        (tmp_path / "DSC0001.ARW").write_bytes(b"II*\x00" + b"\x00" * 100)
+        # AppleDouble file with the same base name
+        (tmp_path / "._DSC0001.ARW").write_bytes(b"not real ARW\0" * 10)
+        result = find_files_by_extensions(tmp_path)
+        names = sorted(p.name for p in result)
+        assert names == ["DSC0001.ARW"]
