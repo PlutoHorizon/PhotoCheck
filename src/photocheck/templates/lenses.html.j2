@@ -2,12 +2,118 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>All Lenses</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>All Lenses — PhotoCheck Report</title>
+<style>
+:root {
+  --color-bg: #fff;
+  --color-text: #1a1a1a;
+  --color-muted: #888;
+  --color-rule: #e5e5e5;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+  --font-num: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: var(--color-bg);
+  line-height: 1.5;
+  padding: 3rem 2rem 6rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+header {
+  border-bottom: 1px solid var(--color-rule);
+  padding-bottom: 1.5rem;
+  margin-bottom: 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+header h1 {
+  font-size: 1.25rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+header a {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-muted);
+}
+header a:hover { color: var(--color-text); border-bottom-color: var(--color-text); }
+.lens-table { width: 100%; border-collapse: collapse; }
+.lens-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-rule);
+}
+.lens-table th.right { text-align: right; }
+.lens-table td {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--color-rule);
+  font-variant-numeric: tabular-nums;
+}
+.lens-table td.pos {
+  font-family: var(--font-num);
+  color: var(--color-muted);
+  width: 3rem;
+}
+.lens-table td.name { font-weight: 500; }
+.lens-table td.count { text-align: right; font-family: var(--font-num); }
+.lens-table td.pct { text-align: right; color: var(--color-muted); width: 5rem; }
+.empty-state {
+  color: var(--color-muted);
+  text-align: center;
+  padding: 3rem 0;
+  font-style: italic;
+}
+@media (max-width: 720px) {
+  body { padding: 1.5rem 1rem 3rem; }
+  .lens-table td.pos { width: 2rem; }
+  .lens-table td.pct { width: 4rem; }
+}
+</style>
 </head>
 <body>
-<h1>All Lenses</h1>
-{% for lens in all_lenses %}
-<p>{{ lens.position }}. {{ lens.name }} — {{ lens.count }}</p>
-{% endfor %}
+
+<header>
+  <h1>All lenses</h1>
+  <a href="index.html">← Back to report</a>
+</header>
+
+{% if all_lenses %}
+<table class="lens-table">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Lens</th>
+      <th class="right">Photos</th>
+      <th class="right">Share</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for lens in all_lenses %}
+      <tr>
+        <td class="pos">{{ lens.position }}</td>
+        <td class="name">{{ lens.name }}</td>
+        <td class="count">{{ lens.count }}</td>
+        <td class="pct">{{ lens.pct }}%</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">暂无镜头数据</div>
+{% endif %}
+
 </body>
 </html>
