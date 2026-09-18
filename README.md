@@ -13,6 +13,7 @@ Photo EXIF metadata analysis tool — extract and visualize shooting patterns fr
   - Hourly shooting heatmap
   - Lens usage over time (stacked area + interactive HTML)
   - Per-lens detail charts
+- **HTML Report** (new): Consolidated self-contained `report/` folder with hero stats, all charts, and interactive timeline
 - **Flexible**: CLI, interactive menu, or Python API
 
 ## Quick Start
@@ -60,6 +61,23 @@ Edit `photocheck.toml` or `run.py`:
 | `SCAN_FOLDER` | Path to photos | - |
 | `CROP_FACTOR` | Sensor crop factor (1.0=FF, 1.5=APS-C) | 1.0 |
 | `WORKERS` | Thread count | 8 |
+| `DO_REPORT` | Generate HTML report | True |
+| `REPORT_DIR` | Report output directory | `./report` |
+| `TOP_LENSES` | Top N lenses inlined on main page | 5 |
+
+## HTML Report
+
+After running `scan` and `analyze`, generate a consolidated HTML report:
+
+```bash
+uv run python -m photocheck report
+# Or specify output directory
+uv run python -m photocheck report --output ./my_report
+# Or change the number of inlined top lenses (default: 5)
+uv run python -m photocheck report --top-lenses 8
+```
+
+The `report/` folder contains `index.html` (consolidated report with hero stats, all charts, and interactive timeline via iframe) and `lenses.html` (subpage listing every lens with counts and share). Design follows a Minimal / Swiss aesthetic — white background, sans-serif, no JavaScript dependencies except the embedded Plotly iframe.
 
 ## Output
 

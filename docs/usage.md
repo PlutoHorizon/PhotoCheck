@@ -193,6 +193,51 @@ cli_main(["analyze", "--type", "all"])
 
 ---
 
+## HTML 报告生成
+
+完成 `scan` + `analyze` 后，可以一键生成 HTML 报告：
+
+```bash
+uv run python -m photocheck report
+```
+
+输出目录结构：
+
+```
+report/
+├── index.html              # 主报告（6 个 hero 卡片 + 7 个 section）
+├── lenses.html             # 全部镜头子页（带表格）
+└── charts/                 # PNG 图表 + 交互式 timeline
+    ├── focal_histogram.png
+    ├── fstop_histogram.png
+    ├── lens_histogram.png
+    ├── timeline_focal_length.png
+    ├── hourly_heatmap.png
+    ├── timeline_by_lens.html     (iframe 嵌入)
+    ├── lens_top1_focal.png       (Top 5 镜头焦距分布)
+    ├── lens_top1_fstop.png
+    └── ...
+```
+
+常用参数：
+
+| 参数 | 说明 | 默认 |
+|------|------|------|
+| `--output, -o` | 报告输出目录 | `./report/` |
+| `--top-lenses, -n` | 主页内嵌 Top N 镜头详情 | 5 |
+
+设计风格：Minimal Swiss（白底、无衬线、强数字对比、章节编号 01-07），无 JavaScript 依赖（仅交互图通过 iframe 加载）。
+
+在 `run.py` 中通过以下开关控制：
+
+```python
+DO_REPORT = True      # 是否生成 HTML 报告
+REPORT_DIR = "./report"  # 报告输出目录
+TOP_LENSES = 5        # 主页内嵌 Top N 镜头
+```
+
+---
+
 ## 输出文件
 
 所有输出保存在 `output/` 目录下：
