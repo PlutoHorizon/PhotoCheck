@@ -16,6 +16,7 @@ from .core.cache import save_cache, load_cache, get_stale_files
 from .core.models import PhotoMetadata
 from .viz.histograms import plot_focal_histogram, plot_fstop_histogram, plot_lens_histogram, plot_lens_detail
 from .viz.timeline import plot_timeline_scatter, plot_hourly_heatmap, plot_timeline_by_lens, plot_timeline_by_lens_html
+from .report.builder import build_report
 
 
 # Only ARW files by default
@@ -202,6 +203,31 @@ def analyze_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def report_command(args: argparse.Namespace) -> int:
+    """Generate HTML report from cached metadata."""
+    cache_path = get_cache_path()
+
+    if not cache_path.exists():
+        print(f"Error: No cache found at {cache_path}. Run 'scan' first.")
+        return 1
+
+    metadata_list = load_cache(cache_path)
+    if not metadata_list:
+        print("Error: Cache is empty. Run 'scan' first.")
+        return 1
+
+    valid = [m for m in metadata_list if m.error is None]
+    output_dir = Path(args.output) if args.output else Path("report")
+    top_n = args.top_lenses
+
+    print(f"Generating report at: {output_dir}/")
+    print(f"Top lenses to inline: {top_n}")
+
+    index_path = build_report(valid, output_dir, top_lenses_n=top_n)
+    print(f"Done. Open: {index_path}")
+    return 0
+
+
 def interactive_menu() -> int:
     """Show interactive menu and handle user choices."""
     config = load_config()
@@ -368,6 +394,21 @@ def main(argv: List[str] | None = None) -> int:
         help="Output directory for saved charts (default: ~/.photocheck/output/)",
     )
     analyze_parser.set_defaults(func=analyze_command)
+
+    # Report command
+    report_parser = subparsers.add_parser("report", help="Generate HTML report from cache")
+    report_parser.add_argument(
+        "--output", "-o",
+        default=None,
+        help="报告输出目录 (默认: ./report/)",
+    )
+    report_parser.add_argument(
+        "--top-lenses", "-n",
+        type=int,
+        default=5,
+        help="主页内嵌 Top N 镜头详情 (默认: 5)",
+    )
+    report_parser.set_defaults(func=report_command)
 
     # Interactive mode
     interact_parser = subparsers.add_parser("interactive", help="Start interactive menu")

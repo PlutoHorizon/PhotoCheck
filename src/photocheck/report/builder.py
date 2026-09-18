@@ -5,7 +5,6 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Optional
 
-from ..cli import OUTPUT_DIR
 from ..core.models import PhotoMetadata
 from ..viz.histograms import _plot_bar_chart, classify_focal
 from .renderer import render_lenses, render_report
@@ -13,11 +12,12 @@ from .stats import _valid, compute_all
 
 
 # PNGs/HTML that exist in output/ and get copied verbatim into report/charts/
+# Filenames match what cli.analyze_command writes (see cli.py:166-197)
 _BASE_CHARTS = [
-    "focal.png",
-    "fstop.png",
-    "lens.png",
-    "timeline_focal.png",
+    "focal_histogram.png",
+    "fstop_histogram.png",
+    "lens_histogram.png",
+    "timeline_focal_length.png",
     "hourly_heatmap.png",
     "timeline_by_lens.html",  # the iframe target
 ]
@@ -112,6 +112,7 @@ def build_report(
         generated_at: Timestamp string for the report header. Defaults to now.
     """
     from datetime import datetime as _dt
+    from ..cli import OUTPUT_DIR  # lazy import: avoids circular dependency
 
     if charts_src is None:
         charts_src = OUTPUT_DIR
