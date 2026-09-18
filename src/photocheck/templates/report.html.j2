@@ -2,11 +2,340 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PhotoCheck Report</title>
+<style>
+:root {
+  --color-bg: #fff;
+  --color-text: #1a1a1a;
+  --color-muted: #888;
+  --color-rule: #e5e5e5;
+  --color-accent: #1a1a1a;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-num: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: var(--color-bg);
+  line-height: 1.5;
+  padding: 3rem 2rem 6rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+header {
+  border-bottom: 1px solid var(--color-rule);
+  padding-bottom: 1.5rem;
+  margin-bottom: 3rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+header h1 {
+  font-size: 1.25rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+header .meta {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+section {
+  border-bottom: 1px solid var(--color-rule);
+  padding: 2.5rem 0;
+}
+section:last-of-type { border-bottom: none; }
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+.section-head .num {
+  font-family: var(--font-num);
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  letter-spacing: 0.05em;
+}
+.section-head h2 {
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.hero-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem 1.5rem;
+}
+.hero-card .value {
+  font-family: var(--font-num);
+  font-size: 2.25rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 0.5rem;
+  word-break: break-word;
+  line-height: 1.1;
+}
+.hero-card .label {
+  font-size: 0.7rem;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+}
+.hero-card .sub {
+  font-size: 0.85rem;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+.hero-card.empty .value { color: var(--color-muted); font-size: 1.5rem; }
+.hero-card.empty .sub { color: var(--color-muted); }
+.chart-full { width: 100%; height: auto; display: block; }
+.hourly-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 100px;
+  margin-top: 1rem;
+}
+.hourly-bar {
+  flex: 1;
+  background: var(--color-accent);
+  min-height: 1px;
+}
+.hourly-labels {
+  display: flex;
+  gap: 2px;
+  font-family: var(--font-num);
+  font-size: 0.65rem;
+  color: var(--color-muted);
+  margin-top: 0.5rem;
+}
+.hourly-labels span { flex: 1; text-align: center; }
+iframe {
+  width: 100%;
+  height: 700px;
+  border: 1px solid var(--color-rule);
+  display: block;
+}
+.lens-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3rem;
+  margin-top: 1.5rem;
+}
+.lens-detail {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+.lens-detail h3 {
+  grid-column: 1 / -1;
+  font-size: 0.95rem;
+  font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+.lens-detail h3 .count {
+  font-family: var(--font-num);
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lens-detail img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+.empty-state {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 2rem 0;
+  font-style: italic;
+}
+footer {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-rule);
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+footer a {
+  color: var(--color-text);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-text);
+}
+@media (max-width: 720px) {
+  body { padding: 1.5rem 1rem 3rem; }
+  .hero-grid { grid-template-columns: repeat(2, 1fr); gap: 1.5rem 1rem; }
+  .hero-card .value { font-size: 1.75rem; }
+  .lens-detail { grid-template-columns: 1fr; }
+  iframe { height: 500px; }
+}
+</style>
 </head>
 <body>
-<h1>PhotoCheck Report</h1>
-<p>Generated: {{ generated_at }}</p>
-<p>Main lens: {{ main_lens.name }}</p>
+
+<header>
+  <h1>PhotoCheck Report</h1>
+  <div class="meta">{{ generated_at }} · {{ valid_photos }} photos</div>
+</header>
+
+{# ============ HERO STATS — 6 cards, each rendered inline with custom sub-text ============ #}
+<section class="hero">
+  <div class="hero-grid">
+
+    {# 01 — Main lens #}
+    <div class="hero-card {% if not main_lens.value %}empty{% endif %}">
+      <div class="value">{% if main_lens.value %}{{ main_lens.name }}{% else %}—{% endif %}</div>
+      <div class="label">Main lens</div>
+      <div class="sub">
+        {% if main_lens.value %}{{ main_lens.count }} photos · {{ main_lens.pct }}%
+        {% else %}{{ main_lens.note }}{% endif %}
+      </div>
+    </div>
+
+    {# 02 — Most-used focal #}
+    <div class="hero-card {% if not main_focal.value %}empty{% endif %}">
+      <div class="value">{% if main_focal.value %}{{ main_focal.value }}{% else %}—{% endif %}</div>
+      <div class="label">Most-used focal</div>
+      <div class="sub">
+        {% if main_focal.value %}{{ main_focal.count }} photos · {{ main_focal.pct }}%
+        {% else %}{{ main_focal.note }}{% endif %}
+      </div>
+    </div>
+
+    {# 03 — Most-used aperture #}
+    <div class="hero-card {% if not main_aperture.value %}empty{% endif %}">
+      <div class="value">{% if main_aperture.value %}{{ main_aperture.value }}{% else %}—{% endif %}</div>
+      <div class="label">Most-used aperture</div>
+      <div class="sub">
+        {% if main_aperture.value %}{{ main_aperture.count }} photos · {{ main_aperture.pct }}%
+        {% else %}{{ main_aperture.note }}{% endif %}
+      </div>
+    </div>
+
+    {# 04 — Peak month #}
+    <div class="hero-card {% if not peak_month.value %}empty{% endif %}">
+      <div class="value">{% if peak_month.value %}{{ peak_month.label }}{% else %}—{% endif %}</div>
+      <div class="label">Peak month</div>
+      <div class="sub">
+        {% if peak_month.value %}{{ peak_month.count }} photos
+        {% else %}{{ peak_month.note }}{% endif %}
+      </div>
+    </div>
+
+    {# 05 — Span #}
+    <div class="hero-card {% if not span.value %}empty{% endif %}">
+      <div class="value">{% if span.value %}{{ span.days }} days{% else %}—{% endif %}</div>
+      <div class="label">Shooting span</div>
+      <div class="sub">
+        {% if span.value %}约 {{ span.years_approx }} 年
+        {% else %}{{ span.note }}{% endif %}
+      </div>
+    </div>
+
+    {# 06 — Active days #}
+    <div class="hero-card {% if not active_days.value %}empty{% endif %}">
+      <div class="value">{% if active_days.value %}{{ active_days.days }}{% else %}—{% endif %}</div>
+      <div class="label">Active days</div>
+      <div class="sub">
+        {% if active_days.value %}out of {{ active_days.total_span_days }} days · {{ active_days.ratio }}%
+        {% else %}{{ active_days.note }}{% endif %}
+      </div>
+    </div>
+
+  </div>
+</section>
+
+{# ============ 01 — HOURLY ============ #}
+{% if hourly and hourly|sum > 0 %}
+<section>
+  <div class="section-head"><span class="num">01</span><h2>Hourly distribution</h2></div>
+  <div class="hourly-bars">
+    {% set max_h = (hourly|max) or 1 %}
+    {% for count in hourly %}
+      <div class="hourly-bar" style="height: {{ ((count / max_h) * 100)|round(1) }}%" title="{{ count }} photos at {{ loop.index0 }}:00"></div>
+    {% endfor %}
+  </div>
+  <div class="hourly-labels">
+    {% for h in range(24) %}<span>{{ h }}</span>{% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{# ============ 02 — FOCAL ============ #}
+<section>
+  <div class="section-head"><span class="num">02</span><h2>Focal length</h2></div>
+  <img class="chart-full" src="charts/focal.png" alt="Focal length distribution"
+       onerror="this.outerHTML='&lt;div class=&quot;empty-state&quot;&gt;图表未生成&lt;/div&gt;'">
+</section>
+
+{# ============ 03 — FSTOP ============ #}
+<section>
+  <div class="section-head"><span class="num">03</span><h2>Aperture</h2></div>
+  <img class="chart-full" src="charts/fstop.png" alt="Aperture distribution"
+       onerror="this.outerHTML='&lt;div class=&quot;empty-state&quot;&gt;图表未生成&lt;/div&gt;'">
+</section>
+
+{# ============ 04 — LENS ============ #}
+<section>
+  <div class="section-head"><span class="num">04</span><h2>Lens usage</h2></div>
+  <img class="chart-full" src="charts/lens.png" alt="Lens usage"
+       onerror="this.outerHTML='&lt;div class=&quot;empty-state&quot;&gt;图表未生成&lt;/div&gt;'">
+</section>
+
+{# ============ 05 — LENS TIMELINE IFRAME ============ #}
+<section>
+  <div class="section-head"><span class="num">05</span><h2>Lens timeline</h2></div>
+  <iframe src="charts/timeline_by_lens.html" loading="lazy"></iframe>
+</section>
+
+{# ============ 06 — TIMELINE FOCAL ============ #}
+<section>
+  <div class="section-head"><span class="num">06</span><h2>Focal over time</h2></div>
+  <img class="chart-full" src="charts/timeline_focal.png" alt="Focal length over time"
+       onerror="this.outerHTML='&lt;div class=&quot;empty-state&quot;&gt;图表未生成&lt;/div&gt;'">
+</section>
+
+{# ============ 07 — TOP LENSES DETAILS ============ #}
+{% if top_lenses %}
+<section>
+  <div class="section-head"><span class="num">07</span><h2>Top lenses</h2></div>
+  <div class="lens-grid">
+    {% for lens in top_lenses %}
+      <div class="lens-detail">
+        <h3>
+          <span>{{ lens.position }}. {{ lens.name }}</span>
+          <span class="count">{{ lens.count }} · {{ lens.pct }}%</span>
+        </h3>
+        <img src="{{ lens.focal_chart }}" alt="Focal: {{ lens.name }}"
+             onerror="this.outerHTML='&lt;div class=&quot;empty-state&quot;&gt;图表未生成&lt;/div&gt;'">
+        <img src="{{ lens.fstop_chart }}" alt="Aperture: {{ lens.name }}"
+             onerror="this.outerHTML='&lt;div class=&quot;empty-state&quot;&gt;图表未生成&lt;/div&gt;'">
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<footer>
+  <a href="lenses.html">View all lenses →</a>
+  <span>PhotoCheck v0.1.0</span>
+</footer>
+
 </body>
 </html>
