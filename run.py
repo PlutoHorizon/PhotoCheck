@@ -25,6 +25,11 @@ DO_VISUALIZE = True                        # 是否执行可视化
 VIZ_TYPE = "all"                           # all, histogram, timeline, lens_detail
 VIZ_FIELD = "focal_length"                 # focal_length, iso, f_stop, shutter_speed
 
+# 报告配置
+DO_REPORT = True                           # 是否生成 HTML 报告
+REPORT_DIR = "./report"                    # 报告输出目录
+TOP_LENSES = 5                             # 主页内嵌 Top N 镜头
+
 # ============================================
 # 以下代码一般不需要修改
 # ============================================
@@ -60,6 +65,15 @@ def run():
         result = cli_main(viz_args)
         if result != 0:
             print(f"可视化失败: {result}")
+            return result
+
+    if DO_REPORT:
+        print(f"\n=== 生成 HTML 报告 ===")
+        report_args = ["report", "--output", REPORT_DIR, "--top-lenses", str(TOP_LENSES)]
+        print(f"执行: uv run python -m photocheck {' '.join(report_args)}")
+        result = cli_main(report_args)
+        if result != 0:
+            print(f"报告生成失败: {result}")
             return result
 
     print("\n完成!")
