@@ -70,7 +70,7 @@ report/
 src/photocheck/
 ├── report/
 │   ├── __init__.py
-│   ├── builder.py        # report_command entry, orchestration
+│   ├── builder.py        # build_report() orchestration; called by cli.report_command
 │   ├── stats.py          # pure stat functions
 │   └── renderer.py       # Jinja2 rendering wrapper
 └── templates/
@@ -103,7 +103,7 @@ All functions are **pure** (no side effects, no I/O) and **defensive** (re-filte
 | `top_lenses(metadata, n=5)` | same | `[(name, count, focal_png, fstop_png, pct), ...]` |
 | `all_lenses(metadata)` | same | `[(name, count), ...]` for `lenses.html` |
 | `hourly_distribution(metadata)` | same | `list[int]` of length 24 |
-| `compute_all(metadata)` | same | `dict` aggregating all of the above (the single entry called by builder) |
+| `compute_all(metadata, top_n=5)` | same | `dict` aggregating all of the above (the single entry called by builder); passes `top_n` through to `top_lenses()` |
 
 **Empty data policy:** if all photos have `error is not None`, every function returns the "无数据" sentinel. The renderer checks for this and shows a "暂无数据" message instead of empty cards.
 
@@ -148,6 +148,7 @@ def build_report(
 
     # 1. Compute stats
     stats = compute_all(metadata, top_n=top_lenses_n)
+    # (compute_all internally calls all hero functions + top_lenses + all_lenses + hourly_distribution)
 
     # 2. Prepare charts folder (copy PNGs, copy timeline_by_lens.html)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -220,6 +221,36 @@ if DO_REPORT:
 ```
 
 `interactive_menu()` gains a 4th option "4. 生成 HTML 报告".
+
+## Report Section Order
+
+The HTML body of `report/index.html` renders sections in this exact order. Each section can be **omitted** if its underlying data is empty (no header, no placeholder).
+
+1. **Header** — report title + generation timestamp
+2. **Hero stats** — 6 cards in a 3×2 grid (the 6 hero functions above)
+3. **拍摄时间规律** (`01`) — `hourly_distribution` data as a small inline SVG bar chart (24-hour distribution)
+4. **焦距分布** (`02`) — `charts/focal.png` full-width
+5. **光圈分布** (`03`) — `charts/fstop.png` full-width
+6. **镜头使用** (`04`) — `charts/lens.png` full-width
+7. **镜头使用时间线** (`05`) — `<iframe src="charts/timeline_by_lens.html">` 700px tall
+8. **焦距时间线** (`06`) — `charts/timeline_focal.png` full-width
+9. **Top 5 镜头详情** (`07`) — for each of top 5 lenses, side-by-side focal + fstop mini charts
+10. **Footer** — link to `lenses.html` (all lenses subpage) + total photo count
+
+The numeric section markers (`01`–`07`) provide the editorial Swiss aesthetic and create a sense of progression through the report.
+
+## Top N Lens PNG Naming Convention
+
+`builder.py` generates these files in `report/charts/`:
+
+```
+lens_top1_focal.png   lens_top1_fstop.png
+lens_top2_focal.png   lens_top2_fstop.png
+...
+lens_topN_focal.png   lens_topN_fstop.png
+```
+
+Where `N` is the position (1-indexed) in the sorted-by-count top list. Lens name is **not** in the filename (to keep paths short and OS-safe for non-ASCII lens names). The template looks up the human-readable name via the same index from `top_lenses()`.
 
 ## Visual Design (Minimal / Swiss)
 
