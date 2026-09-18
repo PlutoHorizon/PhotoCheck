@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .extractor import extract_metadata
+from .models import PhotoMetadata
 
 
 # Only ARW extensions (case-insensitive)
@@ -11,15 +11,7 @@ ARW_EXTENSIONS = {".arw"}
 
 
 def resolve_file_pair(jpg_path: Path, arw_path: Path) -> Path:
-    """Resolve ARW/JPG pair, preferring ARW if it exists.
-
-    Args:
-        jpg_path: Path to potential JPG file
-        arw_path: Path to potential ARW file
-
-    Returns:
-        Path to the preferred file (ARW if exists, else JPG)
-    """
+    """Resolve ARW/JPG pair, preferring ARW if it exists."""
     if arw_path.exists():
         return arw_path
     return jpg_path
@@ -29,23 +21,13 @@ def find_files_by_extensions(
     folder_path: Path,
     extensions_list: List[str],
 ) -> List[Path]:
-    """Find all files with given extensions in a directory tree.
-
-    Args:
-        folder_path: Root directory to search
-        extensions_list: List of extensions like ['.arw', '.jpg']
-
-    Returns:
-        List of Path objects
-    """
-    # Normalize extensions to lowercase with dot prefix
+    """Find all files with given extensions in a directory tree."""
     normalized = set()
     for ext in extensions_list:
         if not ext.startswith("."):
             ext = "." + ext
         normalized.add(ext.lower())
 
-    # Iterate all files and filter by extension (case-insensitive)
     result = []
     for file_path in folder_path.rglob("*"):
         if file_path.is_file() and file_path.suffix.lower() in normalized:
@@ -54,16 +36,13 @@ def find_files_by_extensions(
     return sorted(result)
 
 
-def get_metadata_signature(
-    file_path: Path,
-    crop_factor: float = 1.0,
-) -> Optional[Tuple]:
-    """Extract metadata signature for deduplication.
+def _signature(meta: PhotoMetadata) -> Optional[Tuple]:
+    """Build dedup signature from already-extracted metadata.
 
     Returns tuple of (datetime_original, f_stop, shutter_speed, focal_length, iso)
-    or None if extraction fails.
+    or None if the record is unusable for dedup (extraction error or missing
+    key fields). Returns None intentionally so callers can keep the file.
     """
-    meta = extract_metadata(file_path, crop_factor)
     if meta.error is not None:
         return None
     return (
@@ -75,49 +54,43 @@ def get_metadata_signature(
     )
 
 
-def deduplicate_by_metadata(
-    file_paths: List[Path],
-    crop_factor: float = 1.0,
-) -> List[Path]:
-    """Deduplicate ARW files based on EXIF metadata.
+def deduplicate_metadata_list(
+    metadata_list: List[PhotoMetadata],
+) -> List[PhotoMetadata]:
+    """Deduplicate a list of already-extracted PhotoMetadata.
 
     Files with the same basename are considered duplicates if their
     datetime_original, f_stop, shutter_speed, focal_length, and ISO match.
 
+    Operates in-memory on already-extracted records, so EXIF is read
+    exactly once per file (by the caller). The first record encountered
+    with a given signature is kept; subsequent matches are dropped.
+
     Args:
-        file_paths: List of ARW file paths
-        crop_factor: Crop factor for focal length
+        metadata_list: List of PhotoMetadata records (extracted by caller).
 
     Returns:
-        List of deduplicated file paths
+        New list of deduplicated PhotoMetadata, in input order (skipping dropped).
     """
-    # Group by basename
-    by_basename: Dict[str, List[Path]] = {}
-    for fp in file_paths:
-        base = fp.stem
-        if base not in by_basename:
-            by_basename[base] = []
-        by_basename[base].append(fp)
+    by_basename: Dict[str, List[PhotoMetadata]] = {}
+    for meta in metadata_list:
+        by_basename.setdefault(meta.file_path.stem, []).append(meta)
 
-    # For each group, deduplicate by metadata
-    result = []
-    for base, paths in by_basename.items():
-        if len(paths) == 1:
-            result.append(paths[0])
+    result: list[PhotoMetadata] = []
+    for base, group in by_basename.items():
+        if len(group) == 1:
+            result.append(group[0])
             continue
-
-        # Multiple files with same basename - check metadata
-        seen_signatures: Dict[Tuple, Path] = {}
-        for fp in paths:
-            sig = get_metadata_signature(fp, crop_factor)
+        seen: set = set()
+        for meta in group:
+            sig = _signature(meta)
             if sig is None:
-                # Can't extract metadata, keep the file
-                result.append(fp)
+                # Can't form a signature; keep the file to be safe
+                result.append(meta)
                 continue
-            if sig not in seen_signatures:
-                seen_signatures[sig] = fp
-
-        # Add one representative per unique signature
-        result.extend(seen_signatures.values())
+            if sig not in seen:
+                seen.add(sig)
+                result.append(meta)
+            # else: exact signature already represented by an earlier file
 
     return result

@@ -11,7 +11,7 @@ import concurrent.futures
 from tqdm import tqdm
 
 from .core.extractor import extract_metadata
-from .core.pairing import find_files_by_extensions, deduplicate_by_metadata
+from .core.pairing import find_files_by_extensions, deduplicate_metadata_list
 from .core.cache import save_cache, load_cache, get_stale_files
 from .core.models import PhotoMetadata
 from .viz.histograms import plot_focal_histogram, plot_fstop_histogram, plot_lens_histogram, plot_lens_detail
@@ -75,20 +75,11 @@ def scan_command(args: argparse.Namespace) -> int:
     if not file_paths:
         return 0
 
-    # Deduplicate by metadata (same basename + same EXIF = same photo)
-    if len(file_paths) > 1:
-        unique_paths = deduplicate_by_metadata(file_paths, crop_factor)
-        removed = len(file_paths) - len(unique_paths)
-        if removed > 0:
-            print(f"Deduplicated {removed} duplicate(s) based on metadata")
-        file_paths = unique_paths
-
-    print(f"Processing {len(file_paths)} unique photos with {args.workers} workers...")
-
     # Load existing unified cache if requested.
     # Use mtime to detect files that were modified after caching — those need
     # to be re-extracted. Files in the cache but no longer on disk are dropped.
     cached_metadata: List[PhotoMetadata] = []
+    paths_to_extract: List[Path] = file_paths
     if args.use_cache and cache_path.exists():
         # Need the DataFrame for mtime lookup; reload from parquet.
         import pandas as pd
@@ -99,21 +90,26 @@ def scan_command(args: argparse.Namespace) -> int:
         cached_metadata = [m for m in load_cache(cache_path) if m.file_path in cached_paths_on_disk]
 
         stale_paths = set(get_stale_files(cached_df, file_paths))
-        # Drop stale entries from cache; they'll be re-extracted below
-        cached_metadata = [m for m in cached_metadata if m.file_path not in stale_paths]
-        # Process only the stale + new files
-        file_paths = [f for f in file_paths if f in stale_paths]
+        # Only extract new or modified files
+        paths_to_extract = [f for f in file_paths if f in stale_paths]
         print(
             f"Cache: {len(cached_metadata)} valid, "
-            f"{len(file_paths)} to (re)extract"
+            f"{len(paths_to_extract)} to (re)extract"
         )
 
-    # Process files needing extraction
-    if file_paths:
-        new_metadata = _process_files(file_paths, crop_factor, args.workers)
-        metadata_list = cached_metadata + new_metadata
+    # Extract EXIF for new/stale files (single pass with threading)
+    if paths_to_extract:
+        new_metadata = _process_files(paths_to_extract, crop_factor, args.workers)
     else:
-        metadata_list = cached_metadata
+        new_metadata = []
+
+    # Combine and dedup in-memory — no re-reading of EXIF
+    combined = cached_metadata + new_metadata
+    before = len(combined)
+    metadata_list = deduplicate_metadata_list(combined)
+    removed = before - len(metadata_list)
+    if removed > 0:
+        print(f"Deduplicated {removed} duplicate(s) based on metadata")
 
     # Save unified cache
     save_cache(metadata_list, cache_path)
