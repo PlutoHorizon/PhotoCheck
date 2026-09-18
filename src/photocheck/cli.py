@@ -374,6 +374,8 @@ def main(argv: List[str] | None = None) -> int:
     """Main entry point for the CLI."""
     config = load_config()
     default_folder = config.get("default_folder", "")
+    # crop_factor: 1.0 means "auto-detect" (EXIF 35mm tag > camera DB).
+    # Only a value other than 1.0 (e.g. 1.5) is treated as a user override.
     default_crop_factor = config.get("crop_factor", 1.0)
     default_workers = config.get("workers", 8)
 
@@ -401,7 +403,11 @@ def main(argv: List[str] | None = None) -> int:
         "--crop-factor", "-c",
         type=float,
         default=default_crop_factor,
-        help=f"Crop factor (default: {default_crop_factor})",
+        help=(
+            f"Crop factor. Default {default_crop_factor} = auto-detect "
+            f"(uses EXIF 35mm tag or camera database). Set e.g. 1.5 to "
+            f"force APS-C conversion."
+        ),
     )
     scan_parser.add_argument(
         "--use-cache",

@@ -13,7 +13,8 @@ class PhotoMetadata:
     file_path: Path
     shutter_speed: Optional[float] = None  # seconds
     iso: Optional[int] = None
-    focal_length: Optional[float] = None  # mm (already 35mm-equivalent after crop factor applied at extraction)
+    focal_length: Optional[float] = None  # mm, 35mm-equivalent (from EXIF tag or crop factor)
+    focal_length_35mm: Optional[float] = None  # raw EXIF 35mm-equivalent, if present
     f_stop: Optional[float] = None
     lens_name: Optional[str] = None
     datetime_original: Optional[datetime] = None
