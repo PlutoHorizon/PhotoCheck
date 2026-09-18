@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>All Lenses</title>
+</head>
+<body>
+<h1>All Lenses</h1>
+{% for lens in all_lenses %}
+<p>{{ lens.position }}. {{ lens.name }} — {{ lens.count }}</p>
+{% endfor %}
+</body>
+</html>
