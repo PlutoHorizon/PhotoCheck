@@ -119,7 +119,11 @@ def _process_files(
     crop_factor: float,
     max_workers: int,
 ) -> List[PhotoMetadata]:
-    """Process files with multithreading and progress bar."""
+    """Process files with multithreading and progress bar.
+
+    piexif is mostly I/O bound and releases the GIL during disk reads, so a
+    thread pool gives real parallelism without the IPC overhead of processes.
+    """
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
