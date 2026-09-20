@@ -4,6 +4,18 @@ All functions are pure: take List[PhotoMetadata], return dicts.
 All functions re-filter m.error is not None defensively.
 """
 
+import pandas as pd
+
+
+def _is_valid_dt(dt) -> bool:
+    """True if dt is a real datetime (not None and not pd.NaT)."""
+    if dt is None:
+        return False
+    try:
+        return not pd.isna(dt)
+    except (ValueError, TypeError):
+        return False
+
 from collections import Counter
 
 from ..core.models import PhotoMetadata
@@ -73,9 +85,11 @@ def peak_month(metadata: list[PhotoMetadata]) -> dict:
     valid = _valid(metadata)
     months: Counter = Counter()
     for m in valid:
-        if m.datetime_original is not None:
-            key = m.datetime_original.strftime("%Y-%m")
-            months[key] += 1
+        dt = m.datetime_original
+        if not _is_valid_dt(dt):
+            continue
+        key = dt.strftime("%Y-%m")
+        months[key] += 1
     if not months:
         return {**_EMPTY, "label": None, "count": 0}
     label, count = sorted(months.items(), key=lambda x: (-x[1], x[0]))[0]
@@ -85,7 +99,7 @@ def peak_month(metadata: list[PhotoMetadata]) -> dict:
 def span(metadata: list[PhotoMetadata]) -> dict:
     """Days between first and last photo."""
     valid = _valid(metadata)
-    dates = [m.datetime_original for m in valid if m.datetime_original is not None]
+    dates = [m.datetime_original for m in valid if _is_valid_dt(m.datetime_original)]
     if len(dates) < 2:
         return {**_EMPTY, "days": 0, "years_approx": 0.0}
     days = (max(dates) - min(dates)).days
@@ -96,7 +110,7 @@ def span(metadata: list[PhotoMetadata]) -> dict:
 def active_days(metadata: list[PhotoMetadata]) -> dict:
     """Number of unique shooting days and ratio to total span."""
     valid = _valid(metadata)
-    date_set = {m.datetime_original.date() for m in valid if m.datetime_original is not None}
+    date_set = {m.datetime_original.date() for m in valid if _is_valid_dt(m.datetime_original)}
     if not date_set:
         return {**_EMPTY, "days": 0, "total_span_days": 0, "ratio": 0.0}
     days = len(date_set)
@@ -111,7 +125,7 @@ def hourly_distribution(metadata: list[PhotoMetadata]) -> list[int]:
     valid = _valid(metadata)
     counts = [0] * 24
     for m in valid:
-        if m.datetime_original is not None:
+        if _is_valid_dt(m.datetime_original):
             counts[m.datetime_original.hour] += 1
     return counts
 

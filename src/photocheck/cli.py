@@ -11,7 +11,7 @@ import concurrent.futures
 from tqdm import tqdm
 
 from .core.extractor import extract_metadata
-from .core.pairing import find_files_by_extensions, deduplicate_metadata_list
+from .core.pairing import find_files_by_extensions, deduplicate_metadata_list, DEFAULT_EXTENSIONS as _PAIRING_DEFAULT_EXTENSIONS
 from .core.cache import save_cache, load_cache, get_stale_files
 from .core.models import PhotoMetadata
 from .viz.histograms import plot_focal_histogram, plot_fstop_histogram, plot_lens_histogram, plot_lens_detail
@@ -19,8 +19,9 @@ from .viz.timeline import plot_timeline_scatter, plot_hourly_heatmap, plot_timel
 from .report.builder import build_report
 
 
-# Only ARW files by default
-DEFAULT_EXTENSIONS = [".arw", ".ARW"]
+# Default extensions are defined in core/pairing.py (DEFAULT_EXTENSIONS).
+# Kept here as a back-compat alias.
+DEFAULT_EXTENSIONS = list(_PAIRING_DEFAULT_EXTENSIONS)
 CACHE_FILENAME = "photocheck_cache.parquet"
 CONFIG_FILE = "photocheck.toml"
 
@@ -75,6 +76,67 @@ def scan_command(args: argparse.Namespace) -> int:
     if not file_paths:
         return 0
 
+    # Dry-run mode: full simulation of scan+dedup, but no cache write.
+    if getattr(args, "dry_run", False):
+        from collections import Counter
+        by_ext = Counter(f.suffix.upper() for f in file_paths)
+        print()
+        print("DRY-RUN: extracting EXIF and dedup-simulating (no cache changes)")
+        print(f"  Total files found: {len(file_paths)}")
+        print("  By extension:")
+        for ext, n in sorted(by_ext.items(), key=lambda x: -x[1]):
+            print(f"    {ext}: {n}")
+
+        # Load existing cache (in-memory, no write)
+        # Keep ALL cached entries — never drop based on disk presence,
+        # since an unmounted drive shouldn't wipe the cache for it.
+        # We do NOT use mtime for change detection: camera RAW EXIF
+        # is set at capture and doesn't change later, so mtime-based
+        # re-extraction just wastes I/O.
+        cached_metadata: List[PhotoMetadata] = []
+        if cache_path.exists():
+            import pandas as _pd
+            cached_df = _pd.read_parquet(cache_path)
+            cached_metadata = load_cache(cache_path)
+            cached_paths_set = set(m.file_path for m in cached_metadata)
+            # Only extract files NOT in cache (no mtime check)
+            paths_to_extract = [f for f in file_paths if f not in cached_paths_set]
+        else:
+            paths_to_extract = list(file_paths)
+
+        # Count records that are still on disk (just for reporting)
+        cached_paths_on_disk = set()
+        for m in cached_metadata:
+            if m.file_path.exists():
+                cached_paths_on_disk.add(m.file_path)
+
+        print(f"  Already in cache (total): {len(cached_metadata)}")
+        print(f"  Cache entries with file on disk: {len(cached_paths_on_disk)}")
+        print(f"  Would be EXIF-extracted: {len(paths_to_extract)}")
+
+        # Run extraction on the would-be-processed set
+        if paths_to_extract:
+            new_metadata = _process_files(paths_to_extract, crop_factor, args.workers)
+        else:
+            new_metadata = []
+
+        # Dedup simulation
+        combined = cached_metadata + new_metadata
+        before = len(combined)
+        metadata_list = deduplicate_metadata_list(combined)
+        removed = before - len(metadata_list)
+        if removed > 0:
+            print(f"  Dedup would remove: {removed} duplicates")
+        else:
+            print("  Dedup would remove: 0")
+
+        # Report final state
+        print()
+        print(f"  Current cache:  {len(cached_metadata)} records")
+        print(f"  After scan:     {len(metadata_list)} records")
+        print(f"  Net change:     {'+' if len(metadata_list) > len(cached_metadata) else ''}{len(metadata_list) - len(cached_metadata)}")
+        return 0
+
     # Load existing unified cache if requested.
     # Use mtime to detect files that were modified after caching — those need
     # to be re-extracted. Files in the cache but no longer on disk are dropped.
@@ -87,14 +149,16 @@ def scan_command(args: argparse.Namespace) -> int:
 
         # Keep ALL cached entries — never drop based on disk presence.
         # Rationale: an unmounted external drive would otherwise wipe the
-        # cache for that drive. The cache should only grow (by adding new
-        # files) or update (mtime-changed files re-extracted); deletion is
-        # left to a separate manual --prune step.
+        # cache for that drive. The cache grows by adding new files;
+        # files already in cache are trusted as-is (EXIF for camera RAW
+        # files doesn't change after capture). mtime is intentionally
+        # NOT used — it would trigger false re-extractions for any
+        # unrelated file modification (e.g., a re-export touching the
+        # mtime without changing EXIF).
         cached_metadata = load_cache(cache_path)
-
-        stale_paths = set(get_stale_files(cached_df, file_paths))
-        # Only extract new or modified files
-        paths_to_extract = [f for f in file_paths if f in stale_paths]
+        cached_paths_set = set(m.file_path for m in cached_metadata)
+        # Only extract files that are NOT in the cache yet
+        paths_to_extract = [f for f in file_paths if f not in cached_paths_set]
         print(
             f"Cache: {len(cached_metadata)} total, "
             f"{len(paths_to_extract)} to (re)extract"
@@ -425,6 +489,11 @@ def main(argv: List[str] | None = None) -> int:
         type=int,
         default=default_workers,
         help=f"Number of worker threads (default: {default_workers})",
+    )
+    scan_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="仅扫描并打印统计，不写 cache",
     )
     scan_parser.set_defaults(func=scan_command)
 
