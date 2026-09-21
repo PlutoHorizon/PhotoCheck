@@ -7,6 +7,7 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from ..core.extractor import is_valid_dt
 from ..core.models import PhotoMetadata
 
 
@@ -33,7 +34,7 @@ def plot_timeline_scatter(
     dates = []
     values = []
     for m in metadata_list:
-        if m.error is not None or m.datetime_original is None:
+        if m.error is not None or not is_valid_dt(m.datetime_original):
             continue
         val = getattr(m, field, None)
         if val is not None and val > 0:
@@ -92,7 +93,7 @@ def plot_hourly_heatmap(
     """Plot hourly shooting frequency as a black/gray bar chart (Minimal Swiss style)."""
     hour_data = []
     for m in metadata_list:
-        if m.error is not None or m.datetime_original is None:
+        if m.error is not None or not is_valid_dt(m.datetime_original):
             continue
         hour = m.datetime_original.hour
         if field is None:
@@ -177,7 +178,7 @@ def plot_timeline_series(
     # Extract dates
     dates = []
     for m in metadata_list:
-        if m.error is not None or m.datetime_original is None:
+        if m.error is not None or not is_valid_dt(m.datetime_original):
             continue
         dates.append(m.datetime_original.date())
 
@@ -238,7 +239,7 @@ def plot_timeline_by_lens(
     # Collect valid data
     records = []
     for m in metadata_list:
-        if m.error is not None or m.datetime_original is None or m.lens_name is None:
+        if m.error is not None or not is_valid_dt(m.datetime_original) or m.lens_name is None:
             continue
         records.append({
             "date": pd.Timestamp(m.datetime_original),
@@ -324,7 +325,7 @@ def plot_timeline_by_lens_html(
     # Collect valid data
     records = []
     for m in metadata_list:
-        if m.error is not None or m.datetime_original is None or m.lens_name is None:
+        if m.error is not None or not is_valid_dt(m.datetime_original) or m.lens_name is None:
             continue
         records.append({
             "date": pd.Timestamp(m.datetime_original),

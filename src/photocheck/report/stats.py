@@ -4,20 +4,11 @@ All functions are pure: take List[PhotoMetadata], return dicts.
 All functions re-filter m.error is not None defensively.
 """
 
-import pandas as pd
-
-
-def _is_valid_dt(dt) -> bool:
-    """True if dt is a real datetime (not None and not pd.NaT)."""
-    if dt is None:
-        return False
-    try:
-        return not pd.isna(dt)
-    except (ValueError, TypeError):
-        return False
-
 from collections import Counter
 
+import pandas as pd
+
+from ..core.extractor import is_valid_dt as _is_valid_dt
 from ..core.models import PhotoMetadata
 from ..viz.histograms import classify_focal
 

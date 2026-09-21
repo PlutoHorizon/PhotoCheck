@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Optional
 from datetime import datetime
 
+import pandas as pd
+
 from .models import PhotoMetadata
 
 
@@ -15,6 +17,22 @@ from .models import PhotoMetadata
 # beyond the buffer raises struct.error from piexif and we fall back to the
 # full read.
 EXIF_HEADER_BYTES = 256 * 1024
+
+
+def is_valid_dt(dt) -> bool:
+    """True if dt is a real datetime (not None and not pd.NaT).
+
+    After a parquet round-trip, missing datetimes come back as pd.NaT
+    (not None). NaT propagates silently through arithmetic and indexing,
+    so callers must filter it explicitly before using dt as a real
+    timestamp. Use this helper instead of `dt is not None`.
+    """
+    if dt is None:
+        return False
+    try:
+        return not pd.isna(dt)
+    except (ValueError, TypeError):
+        return False
 
 
 # EXIF tag mappings: tag_id -> (parent_key, field_name)
