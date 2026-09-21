@@ -87,8 +87,10 @@ def plot_lens_detail(
     print(f"Found {len(by_lens)} lenses")
 
     for lens_name, photos in sorted(by_lens.items(), key=lambda x: len(x[1]), reverse=True):
-        # Short name for filename
-        short_name = lens_name[:30].replace("/", "-").replace("\\", "-")
+        # Short name for filename (strip characters illegal on Windows)
+        short_name = lens_name[:30]
+        for ch in '\\/:*?"<>|':
+            short_name = short_name.replace(ch, "-")
 
         # Focal length distribution
         focal_values = [m.focal_length for m in photos if m.focal_length is not None and m.focal_length >= 7]
