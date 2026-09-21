@@ -77,6 +77,26 @@ uv run python -m photocheck interactive
 > 3. **原始焦段** — 找不到机身表时不做换算（保守默认）
 >
 > 这样全画幅和半画幅混拍的照片都能在同一个图上正确比较了。
+>
+> #### 自定义 crop factor
+>
+> 内置的 `CAMERA_CROP_FACTORS` 表覆盖了约 50 个常见机身。对于特殊机型（Fuji GFX、OM System OM-1、Sony RX1 等），可以在 `photocheck.toml` 里添加条目：
+>
+> ```toml
+> [[crop_factors]]
+> match = "GFX100S"
+> factor = 0.79            # 中画幅（<1.0 表示比 35mm 更广）
+>
+> [[crop_factors]]
+> match = "OM-1"
+> factor = 2.0             # OM System OM-1（MFT）
+>
+> [[crop_factors]]
+> match = "ILCE-6400"
+> factor = 1.0             # 强制把特定机身当全画幅
+> ```
+>
+> `match` 是相对 EXIF `Camera Model` 值的**前缀匹配**。最长前缀优先，所以 `"ILCE-6400"` 会覆盖内置的 `"ILCE-6"`（否则所有 Sony APS-C 都会被匹配到）。
 
 ## HTML 报告
 

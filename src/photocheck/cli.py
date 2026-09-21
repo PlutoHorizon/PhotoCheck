@@ -54,6 +54,36 @@ def load_config() -> dict:
         return {}
 
 
+def _apply_crop_factor_overrides() -> int:
+    """Apply user-defined [crop_factors] overrides to extractor's lookup table.
+
+    photocheck.toml format:
+        [[crop_factors]]
+        match = "OM-1"
+        factor = 2.0
+
+    Returns the number of overrides applied (0 if no config or section).
+    """
+    from .core.extractor import set_crop_factor_overrides
+
+    config = load_config()
+    entries = config.get("crop_factors") or []
+    overrides: list[tuple[str, float]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        match = entry.get("match")
+        factor = entry.get("factor")
+        if not match or factor is None:
+            continue
+        try:
+            overrides.append((str(match), float(factor)))
+        except (TypeError, ValueError):
+            continue
+    set_crop_factor_overrides(overrides or None)
+    return len(overrides)
+
+
 def scan_command(args: argparse.Namespace) -> int:
     """Execute the scan command: find and extract metadata from photos."""
     folder = Path(args.folder).expanduser().resolve()
@@ -64,6 +94,10 @@ def scan_command(args: argparse.Namespace) -> int:
     cache_path = get_cache_path()
     extensions = args.extensions.split(",") if args.extensions else DEFAULT_EXTENSIONS
     crop_factor = args.crop_factor
+
+    # Apply user-supplied crop-factor overrides from photocheck.toml so
+    # EXIF→35mm-equivalent conversion uses the user's preferred table.
+    _apply_crop_factor_overrides()
 
     print(f"Scanning: {folder}")
     print(f"Extensions: {extensions}")

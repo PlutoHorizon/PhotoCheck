@@ -70,10 +70,30 @@ Edit `photocheck.toml` or `run.py`:
 The focal length stored in the cache is **always** the 35mm-equivalent value, regardless of sensor size. Resolution priority:
 
 1. **EXIF `FocalLengthIn35mmFilm` (0xA405)** — the manufacturer-reported 35mm equivalent. Used as-is when present (Sony FF bodies, Nikon Z8, etc.).
-2. **Raw `FocalLength` × camera crop factor** — for bodies that don't write the 35mm tag (Sony APS-C like a6400, Canon EF-S bodies, all MFT). Crop factors are looked up in `CAMERA_CROP_FACTORS` in `core/extractor.py`.
+2. **Raw `FocalLength` × camera crop factor** — for bodies that don't write the 35mm tag (Sony APS-C like a6400, Canon EF-S bodies, all MFT). Crop factors are looked up in `CAMERA_CROP_FACTORS` in `core/extractor.py`, plus any `[[crop_factors]]` overrides from `photocheck.toml`.
 3. **Raw `FocalLength` as-is** — when the body is unknown. Conservative default (no conversion), still better than nothing.
 
 This means a Sony a6400 + E 18-135mm records as 27-202mm (physical × 1.5), while a Sony a7C II + FE 200-600mm records as 200-600mm (from the 35mm tag). They can be plotted together on the same axis.
+
+#### Custom crop factors
+
+The built-in `CAMERA_CROP_FACTORS` table covers ~50 common bodies. For unusual cameras (Fuji GFX, OM System OM-1, Sony RX1, etc.), add entries to `photocheck.toml`:
+
+```toml
+[[crop_factors]]
+match = "GFX100S"
+factor = 0.79            # medium format (<1.0 means wider than 35mm)
+
+[[crop_factors]]
+match = "OM-1"
+factor = 2.0             # OM System OM-1 (MFT)
+
+[[crop_factors]]
+match = "ILCE-6400"
+factor = 1.0             # force a specific body to be treated as FF
+```
+
+The `match` field is a **prefix** against the EXIF `Camera Model` value. Lookup is longest-prefix-wins, so an entry `"ILCE-6400"` overrides the built-in `"ILCE-6"` (which would otherwise match every Sony APS-C body).
 
 ## HTML Report
 

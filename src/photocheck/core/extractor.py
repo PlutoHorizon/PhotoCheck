@@ -113,16 +113,49 @@ CAMERA_CROP_FACTORS: list[tuple[str, float]] = [
 ]
 
 
+# Backwards-compatible alias (some tests/docs reference this name)
+DEFAULT_CROP_FACTORS = CAMERA_CROP_FACTORS
+
+
+# Module-level active table. Defaults to the built-in list; can be
+# overridden per-process via set_crop_factor_overrides() (called by
+# CLI after loading photocheck.toml). User entries are prepended so
+# they win the longest-prefix lookup over the built-in defaults.
+_active_crop_factors: list[tuple[str, float]] = list(CAMERA_CROP_FACTORS)
+
+
+def set_crop_factor_overrides(overrides: list[tuple[str, float]] | None) -> None:
+    """Replace the active crop-factor table with overrides + built-ins.
+
+    Call once at scan start (e.g. from CLI after loading photocheck.toml).
+    Pass None to reset to built-ins only.
+
+    Longest-prefix-wins ordering means a user entry like ("ILCE-6400", 1.5)
+    will beat the built-in ("ILCE-6", 1.5) only if the user prefix is
+    longer, but since both yield the same factor it doesn't matter.
+    To override a built-in factor (e.g. force 1.0 for an APS-C body),
+    the user entry must be longer than the built-in prefix.
+    """
+    global _active_crop_factors
+    if overrides:
+        _active_crop_factors = list(overrides) + list(CAMERA_CROP_FACTORS)
+    else:
+        _active_crop_factors = list(CAMERA_CROP_FACTORS)
+
+
 def get_crop_factor(camera_model: Optional[str]) -> float:
     """Look up sensor crop factor from camera model name.
 
     Returns 1.0 (full-frame) for unknown or missing models — this is
     a safe default: it leaves FocalLength as-is rather than guessing.
+
+    Uses the active table set by set_crop_factor_overrides(), or the
+    built-in defaults if no overrides were registered.
     """
     if not camera_model:
         return 1.0
     # Sort by length descending so longer prefixes win ("Canon EOS R7" before "Canon EOS")
-    for prefix, factor in sorted(CAMERA_CROP_FACTORS, key=lambda p: -len(p[0])):
+    for prefix, factor in sorted(_active_crop_factors, key=lambda p: -len(p[0])):
         if camera_model.startswith(prefix):
             return factor
     return 1.0
