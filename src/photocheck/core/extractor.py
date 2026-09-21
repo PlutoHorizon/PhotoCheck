@@ -35,6 +35,99 @@ def is_valid_dt(dt) -> bool:
         return False
 
 
+# Camera-body crop factor table. Used when EXIF FocalLengthIn35mmFilm
+# is missing (most Sony APS-C, all Canon EF-S, all MFT bodies).
+#
+# Entries are (model_prefix, factor) pairs. Lookup tries each prefix
+# against the EXIF Camera Model name. The first matching prefix wins;
+# longest prefixes are listed first to win over shorter ones.
+#
+# Sources: manufacturer spec sheets; defaults are:
+#   full-frame (incl. Sony ILCE-7/9/1, Canon R5/R6, Nikon Zx)        1.0
+#   Canon APS-C DSLR (EF-S bodies, EOS M, Rebel xxxD/xxxxD)         1.6
+#   Sony / Nikon / Fuji APS-C                                        1.5
+#   Micro Four Thirds (Olympus OM, Panasonic Lumix G)                2.0
+CAMERA_CROP_FACTORS: list[tuple[str, float]] = [
+    # Sony APS-C (ILCE-6xxx)
+    ("ILCE-6", 1.5),
+    ("NEX-", 1.5),
+    # Sony full-frame (FF bodies usually write 35mm tag, but include for fallback)
+    ("ILCE-7", 1.0),
+    ("ILCE-9", 1.0),
+    ("ILCE-1", 1.0),
+    # Canon APS-C — DSLR and mirrorless
+    ("Canon EOS 7D", 1.6),
+    ("Canon EOS 80D", 1.6),
+    ("Canon EOS 90D", 1.6),
+    ("Canon EOS R7", 1.6),
+    ("Canon EOS R10", 1.6),
+    ("Canon EOS R50", 1.6),
+    ("Canon EOS R100", 1.6),
+    ("Canon EOS M50", 1.6),
+    ("Canon EOS M6", 1.6),
+    ("Canon EOS M5", 1.6),
+    ("Canon EOS 100D", 1.6),
+    ("Canon EOS 200D", 1.6),
+    ("Canon EOS 250D", 1.6),
+    ("Canon EOS 500D", 1.6),
+    ("Canon EOS 550D", 1.6),
+    ("Canon EOS 600D", 1.6),
+    ("Canon EOS 650D", 1.6),
+    ("Canon EOS 700D", 1.6),
+    ("Canon EOS 750D", 1.6),
+    ("Canon EOS 760D", 1.6),
+    ("Canon EOS 800D", 1.6),
+    ("Canon EOS 850D", 1.6),
+    ("Canon EOS 1000D", 1.6),
+    ("Canon EOS 1100D", 1.6),
+    ("Canon EOS 1200D", 1.6),
+    ("Canon EOS 1300D", 1.6),
+    ("Canon EOS 2000D", 1.6),
+    ("Canon EOS 4000D", 1.6),
+    # Nikon APS-C
+    ("D300", 1.5),
+    ("D500", 1.5),
+    ("D7000", 1.5),
+    ("D7100", 1.5),
+    ("D7200", 1.5),
+    ("D7500", 1.5),
+    ("Z50", 1.5),
+    ("Z fc", 1.5),
+    ("Z30", 1.5),
+    # Fuji APS-C
+    ("X-T", 1.5),
+    ("X-H", 1.5),
+    ("X-Pro", 1.5),
+    ("X-E", 1.5),
+    ("X-S10", 1.5),
+    ("X-S20", 1.5),
+    ("X-A", 1.5),
+    ("X-M", 1.5),
+    # Olympus / OM System MFT
+    ("E-M", 2.0),
+    ("E-P", 2.0),
+    # Panasonic MFT
+    ("DC-GH", 2.0),
+    ("DC-G9", 2.0),
+    ("DMC-G", 2.0),
+]
+
+
+def get_crop_factor(camera_model: Optional[str]) -> float:
+    """Look up sensor crop factor from camera model name.
+
+    Returns 1.0 (full-frame) for unknown or missing models — this is
+    a safe default: it leaves FocalLength as-is rather than guessing.
+    """
+    if not camera_model:
+        return 1.0
+    # Sort by length descending so longer prefixes win ("Canon EOS R7" before "Canon EOS")
+    for prefix, factor in sorted(CAMERA_CROP_FACTORS, key=lambda p: -len(p[0])):
+        if camera_model.startswith(prefix):
+            return factor
+    return 1.0
+
+
 # EXIF tag mappings: tag_id -> (parent_key, field_name)
 EXIF_TAGS = {
     37386: ("Exif", "focal_length"),         # FocalLength
@@ -123,14 +216,17 @@ def extract_metadata(
 ) -> PhotoMetadata:
     """Extract EXIF metadata from a single image.
 
-    Focal-length resolution:
-    - If EXIF FocalLengthIn35mmFilm (0xA405) is present, use it directly
-      (manufacturer-reported 35mm-equivalent, most accurate).
-    - Otherwise use raw FocalLength as-is.
+    Focal-length resolution (priority order):
+    1. EXIF FocalLengthIn35mmFilm (0xA405) — manufacturer-reported
+       35mm-equivalent, used as-is.
+    2. raw FocalLength × camera crop factor (from CAMERA_CROP_FACTORS)
+       — for bodies that don't write the 35mm tag (Sony APS-C, Canon
+       EF-S bodies, all MFT, etc.).
+    3. raw FocalLength as-is — when the body is unknown (assumes FF,
+       no conversion).
 
     The crop_factor argument is preserved for API compatibility but
-    is no longer applied. Use FocalLengthIn35mmFilm in the EXIF instead
-    of guessing sensor format.
+    is no longer applied (the per-body table handles conversion).
 
     Args:
         image_path: Path to the image file.
@@ -211,10 +307,18 @@ def _populate_result(
             except Exception:
                 continue
 
-    # Use 35mm tag if present, else raw. No DB or crop_factor math.
+    # Resolve focal_length in this priority:
+    #   1. EXIF FocalLengthIn35mmFilm (0xA405) — manufacturer-reported,
+    #      most accurate, used as-is.
+    #   2. raw FocalLength × camera crop factor — for bodies that don't
+    #      write the 35mm tag (Sony APS-C, Canon EF-S, all MFT, etc.).
+    #   3. raw FocalLength — when the body is unknown (assume FF, no
+    #      conversion) so the value is at least recorded.
     if result.focal_length_35mm is not None:
         result.focal_length = result.focal_length_35mm
-    else:
-        result.focal_length = raw_focal
+    elif raw_focal is not None:
+        crop = get_crop_factor(result.camera_model)
+        result.focal_length = raw_focal * crop
+    # else: focal_length stays None
 
     return result

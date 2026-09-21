@@ -71,7 +71,12 @@ uv run python -m photocheck interactive
 | `REPORT_DIR` | 报告输出目录 | `./report` |
 | `TOP_LENSES` | 主页内嵌 Top N 镜头 | 5 |
 
-> **注意**：以前需要手动指定全画幅或半画幅。现在直接读取 EXIF，如果相机/工具写入 `FocalLengthIn35mmFilm` 标签就用它，否则用原始焦距。Sony 相机一般不写这个 tag，所以非全画幅机器需要自己处理。
+> **注意**：现在焦段自动按以下优先级解析：
+> 1. **EXIF FocalLengthIn35mmFilm (0xA405)** — 厂商报告的 35mm 等效值（如有就用）
+> 2. **机身 crop factor 表** — 没有 35mm tag 时，按相机型号查表（a6400=1.5, Canon 80D=1.6, MFT=2.0 等），把原始焦段乘上去
+> 3. **原始焦段** — 找不到机身表时不做换算（保守默认）
+>
+> 这样全画幅和半画幅混拍的照片都能在同一个图上正确比较了。
 
 ## HTML 报告
 

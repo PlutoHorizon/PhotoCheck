@@ -59,11 +59,21 @@ Edit `photocheck.toml` or `run.py`:
 | Setting | Description | Default |
 |---------|-------------|---------|
 | `SCAN_FOLDER` | Path to photos | - |
-| `CROP_FACTOR` | Sensor crop factor (1.0=FF, 1.5=APS-C) | 1.0 |
+| `CROP_FACTOR` | Deprecated — see "Focal length resolution" below | 1.0 |
 | `WORKERS` | Thread count | 8 |
 | `DO_REPORT` | Generate HTML report | True |
 | `REPORT_DIR` | Report output directory | `./report` |
 | `TOP_LENSES` | Top N lenses inlined on main page | 5 |
+
+### Focal length resolution
+
+The focal length stored in the cache is **always** the 35mm-equivalent value, regardless of sensor size. Resolution priority:
+
+1. **EXIF `FocalLengthIn35mmFilm` (0xA405)** — the manufacturer-reported 35mm equivalent. Used as-is when present (Sony FF bodies, Nikon Z8, etc.).
+2. **Raw `FocalLength` × camera crop factor** — for bodies that don't write the 35mm tag (Sony APS-C like a6400, Canon EF-S bodies, all MFT). Crop factors are looked up in `CAMERA_CROP_FACTORS` in `core/extractor.py`.
+3. **Raw `FocalLength` as-is** — when the body is unknown. Conservative default (no conversion), still better than nothing.
+
+This means a Sony a6400 + E 18-135mm records as 27-202mm (physical × 1.5), while a Sony a7C II + FE 200-600mm records as 200-600mm (from the 35mm tag). They can be plotted together on the same axis.
 
 ## HTML Report
 
