@@ -104,7 +104,17 @@ def dataframe_to_metadata(df: pd.DataFrame) -> List[PhotoMetadata]:
                 kwargs[col] = None
         for col in datetime_cols:
             v = row.get(col)
-            if isinstance(v, datetime):
+            # Parquet round-trips missing datetimes as NaT (a datetime
+            # subclass, and notably NOT a Timestamp instance) and real ones
+            # as Timestamp; downstream code (matplotlib, .hour, date
+            # arithmetic) wants native datetime or None. Normalize here at
+            # the cache boundary, checking isna first because NaT passes
+            # isinstance(v, datetime).
+            if v is None or pd.isna(v):
+                kwargs[col] = None
+            elif isinstance(v, pd.Timestamp):
+                kwargs[col] = v.to_pydatetime()
+            elif isinstance(v, datetime):
                 kwargs[col] = v
             else:
                 kwargs[col] = None

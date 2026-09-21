@@ -57,6 +57,7 @@ CAMERA_CROP_FACTORS: list[tuple[str, float]] = [
     ("ILCE-1", 1.0),
     # Canon APS-C — DSLR and mirrorless
     ("Canon EOS 7D", 1.6),
+    ("Canon EOS 60D", 1.6),
     ("Canon EOS 80D", 1.6),
     ("Canon EOS 90D", 1.6),
     ("Canon EOS R7", 1.6),
@@ -84,7 +85,19 @@ CAMERA_CROP_FACTORS: list[tuple[str, float]] = [
     ("Canon EOS 1300D", 1.6),
     ("Canon EOS 2000D", 1.6),
     ("Canon EOS 4000D", 1.6),
-    # Nikon APS-C
+    # Nikon APS-C. Real EXIF Model strings carry the "NIKON " prefix
+    # ("NIKON Z 30", "NIKON D7200"), so startswith("Z30")-style entries
+    # never match; list the prefixed forms too. Longest-prefix-wins
+    # keeps these ahead of any future short/full-frame conflicts.
+    ("NIKON Z 30", 1.5),
+    ("NIKON Z 50", 1.5),
+    ("NIKON Z fc", 1.5),
+    ("NIKON D300", 1.5),
+    ("NIKON D500", 1.5),
+    ("NIKON D7000", 1.5),
+    ("NIKON D7100", 1.5),
+    ("NIKON D7200", 1.5),
+    ("NIKON D7500", 1.5),
     ("D300", 1.5),
     ("D500", 1.5),
     ("D7000", 1.5),
@@ -161,6 +174,34 @@ def get_crop_factor(camera_model: Optional[str]) -> float:
     return 1.0
 
 
+# Lens-name markers that mark a lens as APS-C, independent of body.
+# Deliberately NOT matching Sony's "E " prefix: Tamron full-frame lenses
+# (e.g. "E 28-200mm F2.8-5.6 A071", Di III) show up with an E prefix in
+# EXIF LensModel on Sony bodies, so the prefix is not trustworthy.
+APS_C_LENS_MARKERS: tuple[str, ...] = (
+    "DC DN",          # Sigma APS-C mirrorless (vs "DG DN" full-frame)
+    "Di III-A",       # Tamron APS-C mirrorless (vs "Di III" full-frame)
+    "DX ",            # Nikon DX (NIKKOR Z DX ...)
+    "EF-S",           # Canon APS-C DSLR
+    "E 17-70mm",      # Tamron 17-70 B070 for Sony E (Di III-A, EXIF name lacks it)
+    "E 70-350mm",     # Sony native APS-C E 70-350 G OSS
+)
+
+
+def lens_crop_factor(lens_name: Optional[str]) -> float:
+    """Crop factor implied by the lens (1.5 for APS-C lenses, else 1.0).
+
+    A full-frame body with an APS-C lens mounted captures an APS-C image
+    (Nikon Z forces the DX crop; Sony/Canon default to it), so the lens
+    can raise the effective factor above the body's own.
+    """
+    if not lens_name:
+        return 1.0
+    if any(marker in lens_name for marker in APS_C_LENS_MARKERS):
+        return 1.5
+    return 1.0
+
+
 # EXIF tag mappings: tag_id -> (parent_key, field_name)
 EXIF_TAGS = {
     37386: ("Exif", "focal_length"),         # FocalLength
@@ -186,11 +227,17 @@ for _tag_id, (_parent, _field) in EXIF_TAGS.items():
     _TAGS_BY_PARENT.setdefault(_parent, []).append((_tag_id, _field))
 
 
-def _parse_rational(value: tuple) -> float:
-    """Parse a rational number tuple (numerator, denominator)."""
-    if value is None:
-        return None
-    return value[0] / value[1]
+def _parse_rational(value) -> Optional[float]:
+    """Parse an EXIF rational.
+
+    piexif returns a (num, den) tuple for RATIONAL tags but a plain int
+    for SHORT/LONG tags (e.g. FocalLengthIn35mmFilm) — handle both.
+    """
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, tuple) and len(value) == 2:
+        return value[0] / value[1]
+    return None
 
 
 def _parse_datetime(value: bytes) -> Optional[datetime]:
@@ -341,16 +388,22 @@ def _populate_result(
                 continue
 
     # Resolve focal_length in this priority:
-    #   1. EXIF FocalLengthIn35mmFilm (0xA405) — manufacturer-reported,
-    #      most accurate, used as-is.
-    #   2. raw FocalLength × camera crop factor — for bodies that don't
-    #      write the 35mm tag (Sony APS-C, Canon EF-S, all MFT, etc.).
-    #   3. raw FocalLength — when the body is unknown (assume FF, no
+    #   1. EXIF FocalLengthIn35mmFilm (0xA405) when non-zero — the body
+    #      computed it from its real crop state (incl. in-body crop
+    #      modes). Sony writes 0 at long focal lengths, so 0 means
+    #      "absent", not "0mm".
+    #   2. raw FocalLength × max(body, lens) crop factor — for bodies
+    #      that don't write the 35mm tag, and for APS-C lenses mounted
+    #      on full-frame bodies (which capture an APS-C image).
+    #   3. raw FocalLength — when nothing is known (assume FF, no
     #      conversion) so the value is at least recorded.
-    if result.focal_length_35mm is not None:
+    if result.focal_length_35mm:
         result.focal_length = result.focal_length_35mm
     elif raw_focal is not None:
-        crop = get_crop_factor(result.camera_model)
+        crop = max(
+            get_crop_factor(result.camera_model),
+            lens_crop_factor(result.lens_name),
+        )
         result.focal_length = raw_focal * crop
     # else: focal_length stays None
 

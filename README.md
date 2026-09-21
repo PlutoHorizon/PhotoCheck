@@ -69,9 +69,9 @@ Edit `photocheck.toml` or `run.py`:
 
 The focal length stored in the cache is **always** the 35mm-equivalent value, regardless of sensor size. Resolution priority:
 
-1. **EXIF `FocalLengthIn35mmFilm` (0xA405)** — the manufacturer-reported 35mm equivalent. Used as-is when present (Sony FF bodies, Nikon Z8, etc.).
-2. **Raw `FocalLength` × camera crop factor** — for bodies that don't write the 35mm tag (Sony APS-C like a6400, Canon EF-S bodies, all MFT). Crop factors are looked up in `CAMERA_CROP_FACTORS` in `core/extractor.py`, plus any `[[crop_factors]]` overrides from `photocheck.toml`.
-3. **Raw `FocalLength` as-is** — when the body is unknown. Conservative default (no conversion), still better than nothing.
+1. **EXIF `FocalLengthIn35mmFilm` (0xA405)** — the manufacturer-reported 35mm equivalent, used when non-zero. Sony APS-C bodies write 0 at long focal lengths, so 0 is treated as absent.
+2. **Raw `FocalLength` × max(body, lens) crop factor** — for bodies that don't write the 35mm tag (Sony APS-C like a6400, Canon EF-S bodies, all MFT), and for APS-C lenses mounted on full-frame bodies (Nikon Z forces the DX crop; Sony/Canon default to it). Body factors come from `CAMERA_CROP_FACTORS` in `core/extractor.py` plus any `[[crop_factors]]` overrides from `photocheck.toml`; lens factors match APS-C lens markers (Sigma `DC DN`, Tamron `Di III-A`, Nikon `DX`, Canon `EF-S`, known Sony E APS-C models). Sony's `E` prefix is deliberately not trusted — Tamron full-frame lenses show up with an E prefix in EXIF LensModel on Sony bodies.
+3. **Raw `FocalLength` as-is** — when neither is known. Conservative default (no conversion), still better than nothing.
 
 This means a Sony a6400 + E 18-135mm records as 27-202mm (physical × 1.5), while a Sony a7C II + FE 200-600mm records as 200-600mm (from the 35mm tag). They can be plotted together on the same axis.
 
