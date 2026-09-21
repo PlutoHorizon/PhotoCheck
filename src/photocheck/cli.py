@@ -164,11 +164,28 @@ def scan_command(args: argparse.Namespace) -> int:
             f"{len(paths_to_extract)} to (re)extract"
         )
 
-    # Extract EXIF for new/stale files (single pass with threading)
+    # Extract EXIF for new/stale files (batched for crash recovery).
+    # After every CHECKPOINT_BATCH files, save the cache so a crash
+    # loses at most that much work. The cache itself is the checkpoint —
+    # on resume, file_paths already in the cache are skipped.
+    CHECKPOINT_BATCH = 5000
+
+    new_metadata: List[PhotoMetadata] = []
     if paths_to_extract:
-        new_metadata = _process_files(paths_to_extract, crop_factor, args.workers)
-    else:
-        new_metadata = []
+        n_batches = (len(paths_to_extract) + CHECKPOINT_BATCH - 1) // CHECKPOINT_BATCH
+        for batch_idx in range(n_batches):
+            start = batch_idx * CHECKPOINT_BATCH
+            end = min(start + CHECKPOINT_BATCH, len(paths_to_extract))
+            batch_paths = paths_to_extract[start:end]
+            print(f"  Batch {batch_idx + 1}/{n_batches}: extracting {len(batch_paths)} files")
+            new_metadata.extend(
+                _process_files(batch_paths, crop_factor, args.workers)
+            )
+            # Save checkpoint after this batch
+            combined = cached_metadata + new_metadata
+            metadata_list = deduplicate_metadata_list(combined)
+            save_cache(metadata_list, cache_path)
+            print(f"  Checkpoint saved: {len(metadata_list)} records total")
 
     # Combine and dedup in-memory — no re-reading of EXIF
     combined = cached_metadata + new_metadata
@@ -178,7 +195,7 @@ def scan_command(args: argparse.Namespace) -> int:
     if removed > 0:
         print(f"Deduplicated {removed} duplicate(s) based on metadata")
 
-    # Save unified cache
+    # Final save (redundant if last batch already saved, but explicit)
     save_cache(metadata_list, cache_path)
     print(f"Cache saved to {cache_path}")
     print(f"Total entries: {len(metadata_list)}")
