@@ -219,7 +219,7 @@ def plot_lens_histogram(
     )
 
     if not values:
-        print("No valid data to plot")
+        print("No valid lens name data to plot")
         return None
 
     counts = Counter(values)

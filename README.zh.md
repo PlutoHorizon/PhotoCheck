@@ -72,9 +72,9 @@ uv run python -m photocheck interactive
 | `TOP_LENSES` | 主页内嵌 Top N 镜头 | 5 |
 
 > **注意**：现在焦段自动按以下优先级解析：
-> 1. **EXIF FocalLengthIn35mmFilm (0xA405)** — 厂商报告的 35mm 等效值（如有就用）
-> 2. **机身 crop factor 表** — 没有 35mm tag 时，按相机型号查表（a6400=1.5, Canon 80D=1.6, MFT=2.0 等），把原始焦段乘上去
-> 3. **原始焦段** — 找不到机身表时不做换算（保守默认）
+> 1. **EXIF FocalLengthIn35mmFilm (0xA405)** — 厂商报告的 35mm 等效值，非零即用（Sony 半画幅机身在长焦端会写 0，0 视为未提供）
+> 2. **机身与镜头 crop factor 取大者** — 没有 35mm tag 时按相机型号查表（a6400=1.5, Canon 80D=1.6, MFT=2.0 等）；半画幅镜头装在全画幅机身上（Nikon Z 强制裁切，Sony/Canon 默认裁切）按 1.5 计算。镜头判定使用可靠标记（适马 `DC DN`、腾龙 `Di III-A`、尼康 `DX`、佳能 `EF-S` 及已知索尼 E 卡口 APS-C 型号）；Sony 的 `E` 前缀不可信——腾龙全幅头（28-200mm A071）在 Sony 机身 EXIF 里也带 E 前缀
+> 3. **原始焦段** — 都未知时不做换算（保守默认）
 >
 > 这样全画幅和半画幅混拍的照片都能在同一个图上正确比较了。
 >
