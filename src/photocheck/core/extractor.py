@@ -1,11 +1,20 @@
 """EXIF metadata extractor for PhotoCheck."""
 
+import os
 import piexif
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
 
 from .models import PhotoMetadata
+
+
+# Only the EXIF region at the head of the file is needed — typically < 64 KB.
+# Reading the whole 30-50 MB RAW file wastes ~99.7% of I/O.
+# 256 KB safely includes Sony/Nikon/Canon MakerNotes; any offset pointing
+# beyond the buffer raises struct.error from piexif and we fall back to the
+# full read.
+EXIF_HEADER_BYTES = 256 * 1024
 
 
 # EXIF tag mappings: tag_id -> (parent_key, field_name)
@@ -64,6 +73,32 @@ def _parse_string(value: bytes) -> Optional[str]:
         return None
 
 
+def _read_exif_bytes(path: Path) -> Optional[bytes]:
+    """Read the EXIF source bytes, preferring a 256 KB header read.
+
+    Returns the first EXIF_HEADER_BYTES of the file on success, or None if
+    the file is small enough that the partial-read path offers no benefit
+    (caller should pass the path to piexif, which reads it whole).
+
+    piexif.load(bytes) supports TIFF/WEBP/JPEG sources; passing bytes
+    avoids the f.read() of the entire 30-50 MB RAW file. If any IFD
+    offset points beyond the buffer, piexif raises struct.error and
+    the caller falls back to the full-file read.
+    """
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return None
+    if size <= EXIF_HEADER_BYTES:
+        # No truncation risk; let piexif read the whole small file.
+        return None
+    try:
+        with open(path, "rb") as f:
+            return f.read(EXIF_HEADER_BYTES)
+    except OSError:
+        return None
+
+
 def extract_metadata(
     image_path: Path,
     crop_factor: float = 1.0,
@@ -88,12 +123,48 @@ def extract_metadata(
     """
     result = PhotoMetadata(file_path=image_path)
 
+    # Fast path: read just the first 256 KB (EXIF lives in the file head).
+    # On ARW this is ~50x less I/O than reading the whole 40 MB file.
+    # piexif raises struct.error if any IFD offset points past our buffer;
+    # in that case we fall back to the full-file read.
+    head = _read_exif_bytes(image_path)
+    if head is not None:
+        try:
+            exif_data = piexif.load(head)
+        except Exception:
+            exif_data = None
+        if exif_data is not None and not _looks_empty(exif_data):
+            return _populate_result(result, exif_data)
+        # Partial read yielded nothing useful — fall through to full read.
+
     try:
         exif_data = piexif.load(str(image_path))
     except Exception as e:
         result.error = str(e)
         return result
 
+    return _populate_result(result, exif_data)
+
+
+def _looks_empty(exif_data: dict) -> bool:
+    """True if piexif returned no tags — partial read likely missed them.
+
+    For JPEG partial-read, piexif silently returns an empty dict when
+    the APP1 marker is beyond our buffer; for TIFF partial-read, it
+    either works fully or raises. Either way, an empty result with a
+    large file means the partial path failed and the caller should
+    fall back.
+    """
+    for section in ("0th", "Exif", "GPS", "Interop", "1st"):
+        if exif_data.get(section):
+            return False
+    return True
+
+
+def _populate_result(
+    result: PhotoMetadata, exif_data: dict
+) -> PhotoMetadata:
+    """Pull our known tags out of a piexif dict into the result."""
     raw_focal: float | None = None
 
     for parent_key, tags in _TAGS_BY_PARENT.items():

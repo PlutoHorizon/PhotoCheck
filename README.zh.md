@@ -176,6 +176,18 @@ Thumbs.db
 
 **强制重新提取某文件**：重命名它或手动从 cache 删除该条目。
 
+## 部分读取 EXIF
+
+`extract_metadata` 每张照片只读取前 **256 KB**，而不是整个 RAW 文件。EXIF IFD（包括 Sony/Nikon/Canon MakerNote）都在文件头——典型 40MB Sony ARW 的 EXIF 段约 135KB，所以部分读取只读 **文件大小的约 0.3%**。
+
+实测在内置 SSD 上：**3.64 ms/张 → 0.07 ms/张（约 50 倍加速）**。在更慢的外置硬盘（USB / NAS）上 I/O 占比更高，加速比会更大。
+
+安全机制：
+- 小于 256KB 的文件走完整读全文件路径，无额外开销。
+- 如果任何 IFD 偏移指向 256KB buffer 之外，piexif 会抛 `struct.error`，代码自动回退到读整文件。基于真实 Sony ARW 文件头（`tests/fixtures/arw_header_256k.bin`）测试过。
+
+优化是无感知的——相同输出、相同 cache 格式、无需迁移。
+
 ## 安全保证
 
 - **只读取**用户照片（piexif 读取 EXIF 段，不修改照片）

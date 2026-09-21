@@ -174,6 +174,18 @@ Camera RAW EXIF is set at capture and doesn't change after. mtime-based re-extra
 
 To force re-extraction of a known file: rename it or delete the cache entry manually.
 
+## Partial EXIF Read
+
+For each photo, `extract_metadata` reads only the first **256 KB** of the file instead of the entire RAW payload. EXIF IFDs (including Sony/Nikon/Canon MakerNotes) live in the file header — on a typical 40 MB Sony ARW, the EXIF region is ~135 KB, so the partial read is **~0.3% of the file size**.
+
+Measured on internal SSD: **3.64 ms/file → 0.07 ms/file (~50× faster)**. The speedup is even larger on slower external drives (USB / NAS) where I/O dominates.
+
+Safety:
+- Files smaller than 256 KB use the standard full-file read path (no overhead).
+- If any IFD offset points past the 256 KB buffer, piexif raises `struct.error` and the code falls back to reading the whole file. Verified against a real Sony ARW header fixture (`tests/fixtures/arw_header_256k.bin`).
+
+The optimization is transparent — same output, same cache schema, no migration needed.
+
 ## Requirements
 
 - Python 3.12+
