@@ -1,5 +1,6 @@
 """Timeline visualizations for PhotoCheck."""
 
+import re
 from collections import Counter
 from datetime import datetime
 from typing import Optional
@@ -12,6 +13,46 @@ from ..core.models import PhotoMetadata
 
 
 plt.rcParams["axes.unicode_minus"] = False
+
+
+# Compact lens labels for legends: "<system/brand prefix> <focal range>",
+# e.g. "FE 200-600mm F5.6-6.3 G OSS" -> "FE 200-600". Full names make
+# stacked-chart legends overflow the plot area.
+_ZOOM_RE = re.compile(r"(\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?)\s*mm", re.I)
+_PRIME_RE = re.compile(r"(\d{2,3}(?:\.\d)?)\s*(?:mm\b|/)")  # "35/1.7", "50mm"
+
+
+def _shorten_lens_name(name: str) -> str:
+    """Compact lens label: leading brand/system words + focal range."""
+    m = _ZOOM_RE.search(name)
+    if m:
+        focal = re.sub(r"\s+", "", m.group(1))
+        prefix = name[: m.start()].strip()
+    else:
+        m = _PRIME_RE.search(name)
+        if not m:
+            return name[:24]
+        focal = m.group(1)
+        prefix = name[: m.start()].strip()
+    words = prefix.split()
+    if len(words) > 3:
+        words = words[-3:]
+    return " ".join(words + [focal])
+
+
+def _short_lens_mapping(lens_names: list[str]) -> dict[str, str]:
+    """Map full lens names to unique short labels.
+
+    On collision (two lenses shortening to the same label) the longer
+    original names are kept truncated, so distinct lenses never merge
+    in the chart.
+    """
+    mapping: dict[str, str] = {}
+    counts = Counter(_shorten_lens_name(n) for n in lens_names)
+    for name in lens_names:
+        short = _shorten_lens_name(name)
+        mapping[name] = short if counts[short] == 1 else name[:24]
+    return mapping
 
 
 def plot_timeline_scatter(
@@ -238,12 +279,15 @@ def plot_timeline_by_lens(
 
     # Collect valid data
     records = []
+    short_map = _short_lens_mapping(
+        [m.lens_name for m in metadata_list if m.lens_name is not None]
+    )
     for m in metadata_list:
         if m.error is not None or not is_valid_dt(m.datetime_original) or m.lens_name is None:
             continue
         records.append({
             "date": pd.Timestamp(m.datetime_original),
-            "lens": m.lens_name[:30],  # Truncate long names
+            "lens": short_map[m.lens_name],
         })
 
     if not records:
@@ -285,7 +329,13 @@ def plot_timeline_by_lens(
     plt.title(title, fontsize=14, fontweight="bold")
     plt.xlabel("Date", fontsize=12)
     plt.ylabel("Photo Count", fontsize=12)
-    plt.legend(loc="upper left", fontsize=8, ncol=2)
+    # Legend below the axes in multiple columns: with 9-11 long lens
+    # names, an in-axes legend squeezes the plot area to half its size.
+    plt.legend(
+        loc="upper center", bbox_to_anchor=(0.5, -0.14),
+        ncol=3, fontsize=8, frameon=False,
+        columnspacing=1.4, handlelength=1.6,
+    )
     plt.grid(alpha=0.3)
     plt.gcf().autofmt_xdate()
 
@@ -324,12 +374,15 @@ def plot_timeline_by_lens_html(
 
     # Collect valid data
     records = []
+    short_map = _short_lens_mapping(
+        [m.lens_name for m in metadata_list if m.lens_name is not None]
+    )
     for m in metadata_list:
         if m.error is not None or not is_valid_dt(m.datetime_original) or m.lens_name is None:
             continue
         records.append({
             "date": pd.Timestamp(m.datetime_original),
-            "lens": m.lens_name,
+            "lens": short_map[m.lens_name],
         })
 
     if not records:
@@ -355,8 +408,10 @@ def plot_timeline_by_lens_html(
         print("No valid data for lens timeline plot")
         return None
 
-    # Convert period to string for JSON
-    x_labels = [str(p) for p in pivot.index]
+    # Convert period to timestamp for JSON; weekly PeriodIndex str() is
+    # "2025-05-12/2025-05-18" (far too wide for tick labels), so use the
+    # period start date and let Plotly's tickformat compress it.
+    x_labels = [ts.strftime("%Y-%m-%d") for ts in pivot.index.to_timestamp()]
 
     # Build traces data
     traces = []
@@ -366,15 +421,26 @@ def plot_timeline_by_lens_html(
         "#aec7e8", "#ffbb78", "#98df8a", "#ff9896", "#c5b0d5",
     ]
 
+    # Per-trace translucent fill to zero: every curve is independent, so
+    # toggling a lens via the legend removes exactly that trace. Stacked
+    # modes (fill:"tonexty", stackgroup) re-bind/re-stack the remaining
+    # traces on toggle, which reads as other lenses changing color/shape.
+    def _rgba(hex_color: str, alpha: float) -> str:
+        h = hex_color.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"rgba({r},{g},{b},{alpha})"
+
     for i, col in enumerate(pivot.columns):
+        c = colors[i % len(colors)]
         traces.append({
             "name": col,
             "x": x_labels,
             "y": pivot[col].tolist(),
             "type": "scatter",
             "mode": "lines+markers",
-            "fill": "tonexty" if i > 0 else "none",
-            "line": {"color": colors[i % len(colors)]},
+            "fill": "tozeroy",
+            "fillcolor": _rgba(c, 0.18),
+            "line": {"color": c, "width": 1.5},
             "marker": {"size": 4},
         })
 
@@ -384,14 +450,20 @@ def plot_timeline_by_lens_html(
             "title": "Date",
             "showgrid": True,
             "tickangle": -45,
-            "tickmode": "auto",
-            "nticks": 20,
+            "tickformat": "%y-%m",
+            "nticks": 14,
         },
         "yaxis": {"title": "Photo Count", "showgrid": True},
         "hovermode": "x unified",
-        "legend": {"orientation": "h", "y": -0.3, "x": 0.5, "xanchor": "center"},
-        "height": 700,
-        "margin": {"l": 60, "r": 30, "t": 60, "b": 180},
+        # Legend below the x-axis title (title sits just under the tick
+        # labels); yanchor top pins the first row at y so the rows extend
+        # downward into the reserved bottom margin.
+        "legend": {
+            "orientation": "h", "y": -0.28, "yanchor": "top",
+            "x": 0.5, "xanchor": "center", "font": {"size": 11},
+        },
+        "height": 630,
+        "margin": {"l": 60, "r": 30, "t": 60, "b": 150},
     }
 
     html_content = f"""<!DOCTYPE html>
@@ -401,9 +473,9 @@ def plot_timeline_by_lens_html(
     <title>Photo Count by Lens Over Time</title>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        #chart {{ width: 100%; height: 700px; }}
-        .legend-note {{ color: #666; font-size: 12px; margin-top: 10px; }}
+        body {{ font-family: Arial, sans-serif; margin: 8px 12px; }}
+        #chart {{ width: 100%; height: 630px; }}
+        .legend-note {{ color: #666; font-size: 12px; margin: 2px 0 0; text-align: center; }}
     </style>
 </head>
 <body>

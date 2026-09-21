@@ -219,13 +219,15 @@ def plot_lens_histogram(
     )
 
     if not values:
-        print("No valid lens name data to plot")
+        print("No valid data to plot")
         return None
 
     counts = Counter(values)
     sorted_items = sorted(counts.items(), key=lambda x: x[1], reverse=True)
 
-    lens_names = [item[0][:30] for item in sorted_items]  # Truncate long names
+    from .timeline import _short_lens_mapping
+    short = _short_lens_mapping([name for name, _ in sorted_items])
+    lens_names = [short[name] for name, _ in sorted_items]
     photo_counts = [item[1] for item in sorted_items]
 
     return _plot_bar_chart(
@@ -256,7 +258,25 @@ def _plot_bar_chart(
         "PingFang SC", "Hiragino Sans GB", "sans-serif",
     ]
 
-    fig, ax = plt.subplots(figsize=(12, 6))
+    if tick_labels is not None:
+        labels = [str(v) for v in tick_labels]
+    else:
+        labels = ["%g" % v if isinstance(v, (int, float)) else str(v) for v in x_values]
+
+    # Short numeric labels stay horizontal so each one reads as a tick
+    # mark directly under its bar. Long text labels (lens names) rotate
+    # 45° with ha='right': each label's tail anchors at its own tick, so
+    # adjacent labels never collide (ha='left' makes neighbours overlap).
+    longest = max((len(lab) for lab in labels if lab), default=0)
+    n = len(labels)
+    if longest > 6:
+        rotation, ha, fontsize = 45, "right", 10
+    else:
+        rotation, ha, fontsize = 0, "center", 9 if n <= 30 else 8
+
+    # Keep every bar labelled: widen the figure instead of thinning labels.
+    fig_width = max(12, min(26, n * 0.3)) if rotation == 0 else 12
+    fig, ax = plt.subplots(figsize=(fig_width, 6))
     fig.patch.set_facecolor("#fff")
     ax.set_facecolor("#fff")
 
@@ -272,12 +292,8 @@ def _plot_bar_chart(
         color="#1a1a1a", edgecolor="#1a1a1a", linewidth=0, width=0.7,
     )
 
-    if tick_labels is not None:
-        ax.set_xticks(range(len(tick_labels)))
-        ax.set_xticklabels(tick_labels, rotation=45, ha="right", color="#1a1a1a", fontsize=10)
-    else:
-        ax.set_xticks(range(len(x_values)))
-        ax.set_xticklabels(x_values, rotation=45, ha="right", color="#1a1a1a", fontsize=10)
+    ax.set_xticks(range(len(x_values)))
+    ax.set_xticklabels(labels, rotation=rotation, ha=ha, color="#1a1a1a", fontsize=fontsize)
 
     # Tick params
     ax.tick_params(axis="y", colors="#1a1a1a", labelsize=10, length=0)
@@ -307,6 +323,14 @@ def _plot_bar_chart(
     ax.margins(y=0.15)
 
     plt.tight_layout()
+    # Center the xlabel on the whole figure, not just the axes box:
+    # default centering ignores the y-tick/ylabel strip on the left, so the
+    # xlabel reads as shifted right of the rendered image. For rotated
+    # multi-line tick labels the label sinks below the deepest name.
+    if xlabel:
+        pos = ax.get_position()
+        label_y = -0.12 if rotation == 0 else -0.42
+        ax.xaxis.set_label_coords((0.5 - pos.x0) / pos.width, label_y)
 
     saved_path = None
     if filename:
